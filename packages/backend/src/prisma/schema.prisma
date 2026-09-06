@@ -1,0 +1,336 @@
+// =============================================================================
+// Jogo da Punição Altruísta — schema do banco (M2)
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+/// Variante da sequência de condições. Cobre Experimentos 1 e 2.
+enum SequenceVariant {
+  ABAC
+  ACAB
+  BCBC
+  CBCB
+}
+
+/// Condição experimental base. Reexposições (A', B', C') usam a mesma condição.
+enum Condition {
+  A
+  B
+  C
+}
+
+/// Culturante produzido pelo motor. Valores alinhados ao domínio TypeScript.
+enum Culturant {
+  Bp // consenso de punição em distribuição igual
+  Bnp // consenso de não punição em distribuição desigual
+  Cp // consenso de punição em distribuição desigual
+  Cnp // consenso de não punição em distribuição igual
+  D // desacordo
+}
+
+/// Julgamento individual: a divisão foi justa ou injusta?
+enum JudgmentResponse {
+  Just
+  Unjust
+}
+
+/// Decisão individual de punição.
+enum PunishmentDecision {
+  Punish
+  NoPunish
+}
+
+/// Estado da sessão. MVP usa três estados.
+enum SessionStatus {
+  WAITING // sessão criada, aguardando início/preparação
+  IN_PROGRESS // experimento em andamento
+  COMPLETED // 64 tentativas concluídas
+}
+
+/// Slot do participante dentro da sessão.
+enum ParticipantSlot {
+  P1
+  P2
+}
+
+// ─── Pesquisador ──────────────────────────────────────────────────────────────
+
+/// Conta do pesquisador. Autenticação é parte do MVP mas ainda não está
+/// implementada no M2 — passwordHash está presente e será validado em M3.
+model Researcher {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  sessions Session[]
+
+  @@map("researchers")
+}
+
+// ─── Catálogo de estímulos ────────────────────────────────────────────────────
+
+/// Conteúdo de um cartão do experimento físico.
+/// Contém apenas os valores e personagens apresentados — sem posição experimental.
+/// A posição (sequência, bloco, índice) vive em TrialTemplate.
+model Stimulus {
+  id                      String @id @default(cuid())
+  endowment               Int    @map("endowment")
+  distributorDistribution Int    @map("distributor_distribution")
+  receptorDistribution    Int    @map("receptor_distribution")
+  distributorCharacter    String @map("distributor_character")
+  receptorCharacter       String @map("receptor_character")
+
+  trialTemplates TrialTemplate[]
+
+  // Chave de idempotência para o seed: combinação única na planilha G1P1
+  @@unique([distributorCharacter, distributorDistribution, receptorDistribution])
+  @@map("stimuli")
+}
+
+/// Posição pré-programada de um estímulo dentro de uma variante experimental.
+/// Um registro por (sequenceVariant × blockNumber × trialInBlock).
+/// Populado via seed. Imutável após seed em produção.
+///
+/// O par (id, sequenceVariant) é declarado como @@unique para ser alvo de
+/// FK composta em Attempt — garante que o TrialTemplate usado pertença à
+/// mesma sequenceVariant da Session.
+model TrialTemplate {
+  id              String          @id @default(cuid())
+  sequenceVariant SequenceVariant @map("sequence_variant")
+  blockNumber     Int             @map("block_number") // 1..4
+  trialInBlock    Int             @map("trial_in_block") // 1..16
+  stimulusId      String          @map("stimulus_id")
+
+  stimulus Stimulus  @relation(fields: [stimulusId], references: [id])
+  attempts Attempt[]
+
+  @@unique([sequenceVariant, blockNumber, trialInBlock])
+  // Chave candidata composta para ser alvo de FK composta em Attempt:
+  // garante simultaneamente sequenceVariant, blockNumber e trialInBlock
+  @@unique([id, sequenceVariant, blockNumber, trialInBlock])
+  @@map("trial_templates")
+}
+
+// ─── Sessão (raiz da execução) ────────────────────────────────────────────────
+
+/// Sessão criada pelo pesquisador. Raiz da execução do experimento.
+/// `name` é o identificador legível (ex. "Turma A — Dupla 3").
+/// `sequenceVariant` define a ordem das condições nos 4 blocos.
+///
+/// O par (id, sequenceVariant) é declarado como @@unique para ser alvo de
+/// FKs compostas em Attempt e SessionParticipant — base da integridade cruzada.
+model Session {
+  id              String          @id @default(cuid())
+  researcherId    String          @map("researcher_id")
+  name            String
+  sequenceVariant SequenceVariant @map("sequence_variant")
+  status          SessionStatus   @default(WAITING)
+
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  researcher   Researcher           @relation(fields: [researcherId], references: [id])
+  participants SessionParticipant[]
+  attempts     Attempt[]
+
+  // Par (id, sequenceVariant) declarado como unique para ser alvo de FK composta
+  @@unique([id, sequenceVariant])
+  @@map("sessions")
+}
+
+// ─── Participantes da sessão ──────────────────────────────────────────────────
+
+/// Participante vinculado a uma sessão específica.
+/// Cada sessão tem exatamente dois registros: um P1 e um P2.
+///
+/// Garantias de banco:
+///   @@unique([sessionId, slot])           → no máximo um P1 e um P2 por sessão
+///   @@unique([sessionId, participantCode])→ códigos únicos dentro da sessão
+///   @@unique([id, sessionId])             → alvo de FK composta em Response
+///
+/// `accessToken` é o UUID do link entregue ao participante pelo pesquisador.
+/// `displayName` é o nome exibido na interface durante a sessão.
+/// `participantCode` é o código de anonimização para exportação CSV (ex. "G1P1").
+///
+/// `joinedAt` registra quando o participante acessou o link pela primeira vez.
+/// `lastSeenAt` é atualizado pelo Socket.IO a cada heartbeat/reconexão.
+/// Presença em tempo real é responsabilidade do Socket.IO, não deste campo.
+model SessionParticipant {
+  id              String          @id @default(cuid())
+  sessionId       String          @map("session_id")
+  slot            ParticipantSlot
+  displayName     String          @map("display_name")
+  participantCode String          @map("participant_code")
+  accessToken     String          @unique @default(uuid()) @map("access_token")
+
+  joinedAt   DateTime? @map("joined_at")
+  lastSeenAt DateTime? @map("last_seen_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  session   Session    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  responses Response[]
+
+  @@unique([sessionId, slot])
+  @@unique([sessionId, participantCode])
+  // Par (id, sessionId) declarado como unique para ser alvo de FK composta em Response
+  @@unique([id, sessionId])
+  @@map("session_participants")
+}
+
+// ─── Tentativa ────────────────────────────────────────────────────────────────
+
+/// Uma tentativa dentro de uma sessão.
+///
+/// Integridade de posição garantida por FKs compostas:
+///   (sessionId, sessionSequenceVariant)
+///       → Session.(id, sequenceVariant)
+///   (trialTemplateId, sessionSequenceVariant, blockNumber, trialInBlock)
+///       → TrialTemplate.(id, sequenceVariant, blockNumber, trialInBlock)
+///
+/// O campo pivot `sessionSequenceVariant` é compartilhado pelas duas FKs,
+/// garantindo que sequenceVariant da Session = sequenceVariant do TrialTemplate.
+/// Os campos `blockNumber` e `trialInBlock` do próprio Attempt participam da
+/// segunda FK, garantindo que o TrialTemplate referenciado corresponde
+/// exatamente à posição do Attempt — impossível usar o template do bloco 4
+/// numa tentativa do bloco 2, ou um template de ACAB numa sessão ABAC.
+///
+/// `condition` é derivada de (sequenceVariant + blockNumber) mas gravada
+/// para auditabilidade — o dado científico não depende de recálculo posterior.
+///
+/// O snapshot do estímulo é obrigatório: a leitura do CSV não depende de
+/// JOIN com o catálogo, mesmo que o catálogo seja alterado futuramente.
+///
+/// `createdAt` registra quando a tentativa foi preparada pelo servidor.
+/// `startedAt` registra quando foi efetivamente exibida ao participante.
+model Attempt {
+  id        String @id @default(cuid())
+  sessionId String @map("session_id")
+
+  // Campo pivot: carrega a sequenceVariant para as duas FKs compostas abaixo
+  sessionSequenceVariant SequenceVariant @map("session_sequence_variant")
+
+  globalNumber Int @map("global_number") // 1..64
+  blockNumber  Int @map("block_number") // 1..4
+  trialInBlock Int @map("trial_in_block") // 1..16
+
+  condition       Condition
+  trialTemplateId String    @map("trial_template_id")
+
+  // Snapshot do estímulo apresentado (auditável independentemente do catálogo)
+  endowment               Int    @map("endowment")
+  distributorDistribution Int    @map("distributor_distribution")
+  receptorDistribution    Int    @map("receptor_distribution")
+  distributorCharacter    String @map("distributor_character")
+  receptorCharacter       String @map("receptor_character")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  // FK composta: garante que sessionSequenceVariant bate com a da Session
+  session Session @relation(fields: [sessionId, sessionSequenceVariant], references: [id, sequenceVariant], onDelete: Cascade)
+
+  // FK composta: garante que o TrialTemplate pertence à mesma sequenceVariant, blockNumber
+  // e trialInBlock do Attempt — impossível referenciar um template de posição errada
+  trialTemplate TrialTemplate @relation(fields: [trialTemplateId, sessionSequenceVariant, blockNumber, trialInBlock], references: [id, sequenceVariant, blockNumber, trialInBlock])
+
+  responses   Response[]
+  trialRecord TrialRecord?
+
+  @@unique([sessionId, globalNumber])
+  @@unique([sessionId, blockNumber, trialInBlock])
+  // Par (id, sessionId) declarado como unique para ser alvo de FK composta em Response
+  @@unique([id, sessionId])
+  @@map("attempts")
+}
+
+// ─── Registro científico ──────────────────────────────────────────────────────
+
+/// Resposta de um participante em uma tentativa.
+///
+/// Integridade cruzada garantida por FKs compostas:
+///   (attemptId, sessionId)            → Attempt.(id, sessionId)
+///   (sessionParticipantId, sessionId) → SessionParticipant.(id, sessionId)
+///
+/// Como ambas as FKs compartilham o mesmo `sessionId`, o banco garante que
+/// o Attempt e o SessionParticipant pertencem à mesma sessão.
+/// Um Response de participante da Sessão B nunca pode referenciar
+/// um Attempt da Sessão A.
+///
+/// Persistência parcial: julgamento e punição chegam em etapas distintas.
+/// O registro é criado quando o julgamento chega; punishment é preenchido
+/// na etapa seguinte pelo Service.
+model Response {
+  id                   String @id @default(cuid())
+  sessionId            String @map("session_id")
+  attemptId            String @map("attempt_id")
+  sessionParticipantId String @map("session_participant_id")
+
+  // Etapa 1 — julgamento
+  judgment   JudgmentResponse? @map("judgment")
+  judgmentAt DateTime?         @map("judgment_at")
+
+  // Etapa 2 — decisão de punição
+  punishment   PunishmentDecision? @map("punishment")
+  punishmentAt DateTime?           @map("punishment_at")
+
+  // Etapa 3 — confirmação de visualização do resultado
+  resultAcknowledgedAt DateTime? @map("result_acknowledged_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // FK composta: garante que o Attempt pertence à mesma sessão que o Response
+  attempt Attempt @relation(fields: [attemptId, sessionId], references: [id, sessionId], onDelete: Cascade)
+
+  // FK composta: garante que o SessionParticipant pertence à mesma sessão que o Response
+  sessionParticipant SessionParticipant @relation(fields: [sessionParticipantId, sessionId], references: [id, sessionId])
+
+  @@unique([attemptId, sessionParticipantId])
+  @@map("responses")
+}
+
+/// Resultado completo produzido por resolveTrial() para uma tentativa.
+/// Escrito atomicamente após ambas as decisões de punição estarem presentes.
+/// Persiste resultados imediatos + saldos acumulados para auditabilidade e
+/// exportação CSV sem reprocessamento.
+model TrialRecord {
+  id        String @id @default(cuid())
+  attemptId String @unique @map("attempt_id")
+
+  // Saídas imediatas de resolveTrial()
+  consensus           Boolean
+  culturant           Culturant
+  p1IndividualCost    Int       @map("p1_individual_cost") // 0 ou 1
+  p2IndividualCost    Int       @map("p2_individual_cost") // 0 ou 1
+  punishmentApplied   Boolean   @map("punishment_applied")
+  distributorFinal    Int       @map("distributor_final")
+  distributorLost     Int       @map("distributor_lost")
+  culturalConsequence Int       @map("cultural_consequence") // 0 ou 3
+
+  // Estado acumulado da sessão após esta tentativa (nextState de resolveTrial)
+  p1CoinsAfter           Int @map("p1_coins_after")
+  p2CoinsAfter           Int @map("p2_coins_after")
+  groupCoinsAfter        Int @map("group_coins_after")
+  disagreementCountAfter Int @map("disagreement_count_after")
+
+  recordedAt DateTime @default(now()) @map("recorded_at")
+
+  attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@map("trial_records")
+}
