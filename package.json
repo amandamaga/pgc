@@ -1,0 +1,16 @@
+{
+  "name": "pgc-game",
+  "version": "1.0.0",
+  "description": "PGC - Jogo da Punição Altruísta",
+  "private": true,
+  "packageManager": "pnpm@8.0.0",
+  "type": "module",
+  "scripts": {
+    "dev:frontend": "pnpm -F pgc-frontend dev",
+    "dev:backend": "pnpm -F pgc-backend dev"
+  },
+  "workspaces": [
+    "packages/frontend",
+    "packages/backend"
+  ]
+}
