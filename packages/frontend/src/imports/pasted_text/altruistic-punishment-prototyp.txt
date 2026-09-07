@@ -1,0 +1,124 @@
+Crie um protótipo de alta fidelidade (desktop, com possibilidade de adaptação mobile) para um experimento comportamental chamado “Jogo da Punição Altruísta”.
+
+O design deve seguir exatamente o fluxo experimental apresentado, mantendo fidelidade científica, mas com leve melhoria de clareza visual.
+
+🧠 Estrutura geral da tela
+
+Criar layout com:
+
+Título grande no topo: “Experimental”
+Navegação com 3 abas:
+Questionário
+Jogo (ativo)
+Entrevista
+Área principal centralizada
+Estilo limpo com fundo claro e elementos arredondados (como nos slides)
+🎮 Fluxo do experimento (IMPORTANTE — seguir exatamente)
+
+O sistema deve representar visualmente o seguinte fluxo:
+
+Exibição dos cartões
+→ Justo ou injusto
+→ Punir ou não punir
+→ (Se punir) Doação da moeda
+→ (Se ambos punirem) Distribuidor punido
+→ Consequência cultural (+3 moedas)
+
+🧩 Telas / estados do sistema
+1. Exibição dos cartões
+Mostrar dois personagens lado a lado (com nomes, ex: Isabella e Cecília)
+Mostrar moedas abaixo de cada personagem (ex: 6 e 6 ou 12 e 0)
+Número da rodada (ex: 1, 2, 3, 4)
+2. Momento de distribuição
+Exibir elemento visual: “HORA DE DIVIDIR”
+Indicar que um personagem fez a distribuição
+3. Pergunta de justiça (TELA PRINCIPAL)
+
+Texto central (em destaque, estilo balão):
+
+“Você acha que essa distribuição foi justa ou injusta?”
+
+Botões:
+
+justo
+injusto
+4. Pergunta de punição
+
+Texto:
+
+“Você daria ou não uma de suas moedas para que Cecília perca 3 moedas?”
+
+Elementos visuais:
+
+cofrinho individual
+moedas
+ícone de perda
+
+Botões grandes:
+
+não (vermelho)
+sim (verde)
+5. Doação da moeda (se sim)
+Animação: moeda saindo do cofrinho do jogador
+Indo para um “banco” ou sistema
+Feedback visual claro de perda
+6. Decisão em dupla (CONSENSO)
+Mostrar dois estados:
+sim / sim
+sim / não
+não / não
+Só avançar para punição se:
+👉 ambos = sim
+7. Resultado da punição
+
+Se punição ocorrer:
+
+Texto sobre o personagem:
+
+“Cecília perdeu 3 moedas”
+
+Atualizar visualmente as moedas (ex: de 6 → 3)
+Feedback negativo no personagem
+8. Consequência cultural (IMPORTANTE)
+Mostrar elemento:
+
+“CC (+3 moedas)”
+
+Relacionar visualmente com:
+ganho coletivo
+ícone de cinema 🎬 (como nos slides)
+9. Reforço visual
+Mostrar:
+moedas entrando no sistema
+progresso do grupo
+ligação com recompensa final (filme)
+🎨 Diretrizes visuais (seguir seu slide)
+Estilo: educativo, infantil, amigável
+Personagens estilo cartoon (como os seus)
+Cores:
+Azul claro (estrutura)
+Verde (ganho)
+Vermelho (perda)
+Amarelo (moedas)
+Botões grandes e acessíveis
+🔊 Interações (se possível no protótipo)
+Clique em botões com feedback visual
+Animação de moedas
+Transições suaves entre etapas
+⚠️ Regras IMPORTANTES (não pode errar)
+O fluxo NÃO pode ser alterado
+A punição depende de consenso
+Punir sempre custa 1 moeda
+A consequência cultural só aparece após o fluxo completo
+O sistema deve deixar claro:
+decisão individual
+decisão coletiva
+🧠 Observação final (muito importante pro Figma Make)
+Criar cada etapa como estado do mesmo frame (ou fluxo navegável)
+Nomear frames como:
+step-01-cards
+step-02-justice
+step-03-punishment
+step-04-consensus
+step-05-result
+step-06-cc

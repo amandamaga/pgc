@@ -1,0 +1,72 @@
+/* Game Theme - Duolingo-inspired Flat Design */
+:root {
+  /* Duolingo color palette */
+  --game-primary: #58CC02;
+  --game-primary-dark: #46A302;
+
+  --game-success: #58CC02;
+  --game-success-dark: #46A302;
+
+  --game-danger: #FF4B4B;
+  --game-danger-dark: #EA2B2B;
+
+  --game-blue: #1CB0F6;
+  --game-blue-dark: #1899D6;
+
+  --game-yellow: #FFD900;
+  --game-yellow-dark: #CE9200;
+
+  --game-purple: #CE82FF;
+  --game-purple-dark: #A560F8;
+
+  --game-coin: #FFD900;
+  --game-coin-dark: #CE9200;
+
+  --game-bg: #F7F7F7;
+  --game-card: #FFFFFF;
+
+  --game-text-primary: #3C3C3C;
+  --game-text-secondary: #AFAFAF;
+  --game-border: #E5E5E5;
+}
+
+/* Game-specific typography */
+.game-title {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: var(--game-text-primary);
+}
+
+.game-body {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 400;
+  color: var(--game-text-primary);
+}
+
+.game-body-secondary {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 400;
+  color: var(--game-text-secondary);
+}
+
+/* Utility class for font-nunito */
+.font-nunito {
+  font-family: 'Nunito', sans-serif;
+}
+
+/* Consistent emoji rendering (Noto Color Emoji) */
+.emoji {
+  font-family: 'Noto Color Emoji', sans-serif;
+  font-style: normal;
+  display: inline-block;
+  line-height: 1;
+}
+
+/* Duolingo button push effect */
+.duo-btn {
+  transition: transform 0.1s ease, border-bottom-width 0.1s ease;
+}
+.duo-btn:active {
+  transform: translateY(3px);
+  border-bottom-width: 2px !important;
+}

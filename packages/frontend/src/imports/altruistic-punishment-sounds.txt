@@ -1,0 +1,91 @@
+Crie efeitos sonoros curtos para um experimento digital chamado Jogo da Punição Altruísta, utilizado em um estudo comportamental com crianças.
+
+Os sons devem seguir o procedimento descrito em um experimento acadêmico e devem funcionar como consequências comportamentais, não como elementos de gamificação exagerada.
+
+Diretrizes gerais:
+
+sons curtos (300–600 ms)
+
+simples e claros
+
+volume moderado
+
+estilo semelhante a jogos educativos
+
+amigável para crianças
+
+evitar música ou sons longos
+
+evitar efeitos dramáticos ou muito emocionais
+
+Os sons devem funcionar apenas como feedback das consequências das decisões no experimento.
+
+Som 1 — Som de punição (doação para punir)
+
+Este som é reproduzido quando o participante decide punir o distribuidor, ou seja, quando ele doa moedas para reduzir as moedas do distribuidor.
+
+Características desejadas:
+
+som curto de impacto leve
+
+tom levemente descendente
+
+indicar que uma ação foi realizada
+
+Referência de estilo:
+
+“soft game penalty sound”
+
+“light impact UI sound”
+
+Duração ideal:
+
+300 a 500 ms.
+
+Evitar sons dramáticos ou muito negativos.
+
+Som 2 — Som vencedor (consequência cultural)
+
+Este som é reproduzido quando ocorre um culturante alvo, ou seja, quando os dois participantes da dupla tomam decisões que produzem a consequência cultural prevista no experimento.
+
+Características desejadas:
+
+som positivo curto
+
+sensação leve de recompensa
+
+pequeno brilho ou “chime”
+
+Referência de estilo:
+
+“short reward chime”
+
+“game success notification”
+
+Duração ideal:
+
+400 a 600 ms.
+
+Esse som deve transmitir progresso ou recompensa coletiva, mas de forma discreta.
+
+Estilo geral dos sons
+
+Todos os sons devem:
+
+ser simples
+
+ter timbre digital leve
+
+lembrar interfaces de jogos educativos
+
+funcionar bem em volume baixo
+
+Evitar:
+
+música de fundo
+
+efeitos exagerados de vitória/derrota
+
+sons muito longos
+
+O objetivo é apenas sinalizar as consequências das decisões no experimento, sem influenciar excessivamente o comportamento dos participantes.

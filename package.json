@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "PGC - Jogo da Punição Altruísta",
   "private": true,
-  "packageManager": "pnpm@8.0.0",
+  "packageManager": "pnpm@8.15.9",
   "type": "module",
   "scripts": {
     "dev:frontend": "pnpm -F pgc-frontend dev",

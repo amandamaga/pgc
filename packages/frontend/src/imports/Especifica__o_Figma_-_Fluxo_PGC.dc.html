@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<script src="./doc-page.js"></script>
+<style>doc-page:not(:defined){visibility:hidden}
+body{margin:0;font-family:'Comic Neue',Arial,sans-serif}
+h1,h2,h3{font-family:'Comic Neue',Arial,sans-serif}
+</style>
+</helmet>
+<div style="box-sizing: border-box"><doc-page margin="0.9in" style="display: flex; flex-direction: column">
+
+<h1 style="font-size:26px;margin:0 0 4px">Especificação de telas — Fluxo PGC (dupla de jogadores)</h1>
+<p style="font-size:12px;color:#666;margin:0 0 24px">Baseado no wireframe "Todas as telas do fluxo (baseado em 2a)". Documento de handoff para recriação no Figma.</p>
+
+<h2 style="font-size:18px;border-bottom:2px solid #1a1a1a;padding-bottom:6px">Padrão global (aplica a todas as telas, exceto onde indicado)</h2>
+<ul style="font-size:13px;line-height:1.6">
+<li>Cartão de tela: 640×400px, fundo branco, cantos levemente arredondados</li>
+<li>Sidebars fixas nas duas bordas (56px cada), separadas do centro por borda pontilhada</li>
+<li>Cada sidebar, de cima para baixo: pilha de moedas em grade de 4 colunas → valor numérico (verde #58CC02) → nome do jogador (cinza, 10px)</li>
+<li><strong>VOCÊ sempre à esquerda, MARIA sempre à direita</strong> (decisão de usabilidade: segue o padrão de leitura ocidental esquerda→direita e mantém o jogador atual na posição de partida familiar)</li>
+<li>Header amarelo "🐷 COFRINHO 0" centralizado no topo — ausente nas telas de feedback fullscreen e na tela final</li>
+</ul>
+
+<h2 style="font-size: 18px; border-bottom: 2px solid #1a1a1a; padding-bottom: 6px; margin-top: 28px; position: relative">Telas do fluxo</h2>
+
+<div style="box-sizing: border-box; display: flex; flex-direction: column; gap: normal; justify-content: normal; align-items: normal"><div style="box-sizing: border-box; display: flex; flex-direction: column; gap: normal; justify-content: normal; align-items: normal"><h3 style="font-size:15px;margin-top:20px">Tela 0 — Distribuição inicial (pré-jogo)</h3><ul style="font-size: 13px; line-height: 1.6; display: grid; justify-content: flex-start">
+<li>Sidebars com 10 moedas cada, valor "10"</li>
+<li>Centro: botão verde único "VER HISTÓRIA"</li><img src="assets/screens/tela0-inicial.png" style="width: 320px; border: 1px solid #ddd; border-radius: 6px; float: right; margin: 0 0 8px 16px; position: static">
+</ul></div><div style="box-sizing: border-box; display: flex; flex-direction: column; gap: normal; justify-content: normal; align-items: normal"><h3 style="font-size:15px;margin-top:20px">Tela 1 — Moedas totais distribuídas</h3><ul style="font-size: 13px; line-height: 1.6; display: grid">
+<li>Título "Moedas Totais Distribuídas"</li>
+<li>Lucas à esquerda do centro, pilha de moedas / valor</li>
+<li>Seta central "➜"</li>
+<li>Miguel à direita do centro, 0 moedas / valor "0"</li>
+<li>Botão amarelo pequeno "Hora de Dividir"</li>
+</ul><img src="assets/screens/tela1-total.png" style="width:320px;border:1px solid #ddd;border-radius:6px;float:right;margin:0 0 8px 16px"></div><div style="box-sizing: border-box; display: flex; flex-direction: column; gap: normal; justify-content: normal; align-items: normal"><h3 style="font-size:15px;margin-top:20px">Tela 2 — Resultado da divisão</h3><ul style="font-size: 13px; line-height: 1.6; display: grid; align-self: auto">
+
+<li>Mesmo bloco de personagens; Lucas passa a ter x moedas, Miguel y</li><li>Sem título nem botão — apenas personagens e valores</li>
+</ul><img src="assets/screens/tela2-resultado.png" style="width:320px;border:1px solid #ddd;border-radius:6px;float:right;margin:0 0 8px 16px"></div><div style="box-sizing: border-box; display: flex; flex-direction: column; gap: normal; justify-content: normal; align-items: normal"><h3 style="font-size:15px;margin-top:20px">Tela 3 — Julgamento (Justa/Injusta)</h3><ul style="font-size:13px;line-height:1.6">
+<li>Avatares reduzidos para 44px</li>
+<li>Botão amarelo "Repetir história" acima da pergunta</li>
+<li>Caixa cinza com a pergunta: "Você acha que essa divisão foi justa ou injusta?"</li>
+<li>Dois botões lado a lado, full width: azul "JUSTA" / azul-escuro "INJUSTA"</li>
+<li>Ao responder, um selo (pill) colorido com o nome do jogador ("VOCÊ"/"MARIA") aparece dentro do botão escolhido</li>
+<li>Enquanto o outro jogador não respondeu: indicador "👤 Maria respondendo •••"</li>
+</ul><img src="assets/screens/tela3-julgamento.png" style="width:320px;border:1px solid #ddd;border-radius:6px;float:right;margin:0 0 8px 16px"></div>
+
+<div style="box-sizing: border-box; display: flex; flex-direction: column"><h3 style="font-size:15px;margin-top:20px">Tela 4 — Julgamento: você respondeu, aguardando Maria</h3><ul style="font-size:13px;line-height:1.6">
+<li>Selo "VOCÊ" aparece no botão escolhido (aqui, JUSTA)</li>
+<li>Indicador "👤 Maria respondendo •••" abaixo dos botões</li>
+</ul><img src="./wireframe-pgc-selection-1--mtp8w38r-if4s.png" alt="wireframe-pgc-selection-1-" width="1284" height="804" style="max-width: 100%; height: auto; display: block; object-fit: cover; width: 1284px; aspect-ratio: 1284 / 804"></div>
+
+<div style="box-sizing: border-box; display: flex; flex-direction: column"><h3 style="font-size:15px;margin-top:20px">Tela 5 — Julgamento: respostas divergentes</h3><ul style="font-size:13px;line-height:1.6">
+<li>Cada jogador escolheu uma opção diferente — selo "VOCÊ" em JUSTA, selo "MARIA" em INJUSTA</li>
+<li>Sem indicador de espera (ambos já responderam)</li>
+</ul></div>
+
+<img src="./wireframe-pgc-selection-2--mtp8woel-l0dt.png" alt="wireframe-pgc-selection-2-" width="1284" height="804" style="max-width: 100%; height: auto; display: block; object-fit: cover; width: 1284px; aspect-ratio: 1284 / 804"><div style="box-sizing: border-box; display: flex; flex-direction: column"><h3 style="font-size:15px;margin-top:20px">Tela 6 — Julgamento: respostas convergentes</h3><ul style="font-size:13px;line-height:1.6">
+<li>Ambos escolheram a mesma opção — selos "VOCÊ" e "MARIA" juntos no mesmo botão (JUSTA)</li>
+</ul><img src="./wireframe-pgc-selection-3--mtp8xdu3-q1nt.png" alt="wireframe-pgc-selection-3-" width="1284" height="804" style="max-width: 100%; height: auto; display: block; object-fit: cover; width: 1284px; aspect-ratio: 1284 / 804"></div>
+
+<div style="box-sizing: border-box; display: flex; flex-direction: column"><h3 style="font-size:15px;margin-top:20px">Tela 7 — Punição: pergunta inicial</h3><ul style="font-size:13px;line-height:1.6">
+<li>Pergunta: "Você daria 1 das suas moedas para que Lucas perca 3 moedas?"</li>
+<li>Botões "SIM" (verde) / "NÃO" (vermelho), sem selos ainda</li>
+</ul><img src="./wireframe-pgc-selection-4--mtp8xswm-epag.png" alt="wireframe-pgc-selection-4-" width="1280" height="800" style="max-width: 100%; height: auto; display: block; object-fit: cover; width: 1280px; aspect-ratio: 1280 / 800"></div>
+
+<div style="box-sizing: border-box; display: flex; flex-direction: column"><h3 style="font-size:15px;margin-top:20px">Tela 8 — Punição: você respondeu, aguardando Maria</h3><ul style="font-size:13px;line-height:1.6">
+<li>Selo "VOCÊ" no botão SIM; sua moeda já foi debitada (9 restantes)</li>
+<li>Indicador "👤 Maria respondendo •••"</li>
+<li>Primeiro feedback flutuante já aparece: "❌ Você perdeu 1 moeda"</li>
+</ul></div></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<img src="./wireframe-pgc-selection-5--mtp8yb0i-jikx.png" alt="wireframe-pgc-selection-5-" width="1284" height="804" style="max-width: 100%; height: auto; display: block; object-fit: cover; width: 1284px; aspect-ratio: 1284 / 804"><div style="box-sizing: border-box; display: flex; flex-direction: column; gap: normal; justify-content: normal; align-items: normal"><h3 style="font-size:15px;margin-top:20px">Tela 9 — Punição: resultado final</h3><ul style="font-size:13px;line-height:1.6">
+<li>Mesmo bloco de personagens (Lucas 24 / Miguel 8)</li>
+<li>Pergunta: "Você daria 1 das suas moedas para que Lucas perca 3 moedas?"</li>
+<li>Botões "SIM" (verde) / "NÃO" (vermelho)</li>
+<li>Após resposta: selos "VOCÊ"/"MARIA" nos botões + indicador de espera do outro jogador</li>
+<li>Feedback pós-decisão: caixas flutuantes vermelho-claro com borda vermelha, posicionadas perto do elemento afetado — ex.: "❌ Você perdeu 1 moeda", "❌ Maria perdeu 3 moedas", "❌ Lucas perdeu 3 moedas"</li>
+<li>Moedas perdidas ficam com o círculo vazio/branco na sidebar/pilha correspondente</li>
+</ul><img src="./wireframe-pgc-selection-6--mtp8yxyr-k46b.png" alt="wireframe-pgc-selection-6-" width="1284" height="804" style="max-width: 100%; height: auto; display: block; object-fit: cover; width: 1284px; aspect-ratio: 1284 / 804"></div>
+
+
+<div style="display:flex;gap:10px;margin:4px 0 8px">
+
+
+
+</div>
+
+<div style="box-sizing: border-box; display: flex; flex-direction: column; gap: normal; justify-content: normal; align-items: normal"><h3 style="font-size:15px;margin-top:20px" class="pagebreak">Tela 10 — CC: ganho de moedas da dupla</h3><img src="assets/screens/tela6-ganho.png" style="width:320px;border:1px solid #ddd;border-radius:6px;float:right;margin:0 0 8px 16px"><ul style="font-size:13px;line-height:1.6">
+<li>Fundo sólido verde</li>
+<li>Ícone 🏆, texto "Vocês ganharam moedas! +3"</li>
+<li>3 moedas grandes lado a lado</li>
+<li>Caixa branca: "Cofrinho da dupla: 123"</li>
+<li>Botão amarelo "Ver a próxima história"</li>
+</ul></div>
+
+
+
+<div style="box-sizing: border-box; display: flex; flex-direction: column; gap: normal; justify-content: normal; align-items: normal"><h3 style="font-size:15px;margin-top:20px">Tela 11 — Fim</h3><ul style="font-size:13px;line-height:1.6">
+<li>Sem header, sem sidebars, fundo branco</li>
+<li>Ícone 🏆, "Parabéns! Vocês terminaram!"</li>
+<li>Caixa verde: "Suas moedas: 7"</li>
+<li>Caixa amarela: "Moedas da turma: 9 de 12"</li>
+<li>Nota de rodapé: "Obrigado por participar!"</li>
+</ul><img src="./wireframe-pgc-selection-7--mtp8zjvz-m60b.png" alt="wireframe-pgc-selection-7-" width="1280" height="800" style="max-width: 100%; height: auto; display: block; object-fit: cover; width: 1280px; aspect-ratio: 1280 / 800"></div>
+
+
+
+
+
+<h2 style="font-size:18px;border-bottom:2px solid #1a1a1a;padding-bottom:6px;margin-top:28px">Componentes reutilizáveis (criar como componentes/variants no Figma)</h2>
+<ol style="font-size:13px;line-height:1.7">
+<li><strong>Sidebar de moedas</strong> — variants: valor cheio vs. com moeda(s) vazia/perdida</li>
+<li><strong>Bloco de personagem + pilha de moedas + seta central</strong> — variants: com/sem seta, com/sem selo de resposta</li>
+<li><strong>Botão de resposta com selo de jogador</strong> — variants: vazio, 1 selo, 2 selos</li>
+<li><strong>Card de feedback fullscreen</strong> — variants: vermelho/perda, verde/ganho</li>
+<li><strong>Caixa de feedback flutuante</strong> — tooltip vermelho com borda, posicionamento livre</li>
+</ol>
+
+</doc-page></div>
+</x-dc>
+</body>
+</html>
