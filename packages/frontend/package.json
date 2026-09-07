@@ -7,6 +7,7 @@
     "test:export": "node scripts/test-session-export.mjs",
     "test:panel": "node scripts/test-session-panel.mjs",
     "test:participant": "node scripts/test-participant-flow.mjs",
+    "test:e2e": "node scripts/test-e2e-full-game.mjs",
     "build": "vite build",
     "screenshots": "node scripts/capture-screenshots.mjs",
     "dev": "vite"
