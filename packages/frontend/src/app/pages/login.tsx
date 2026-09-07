@@ -142,9 +142,9 @@ export function LoginPage() {
 
         {/* Footer */}
         <p className="text-center text-sm text-slate-500 mt-6">
-          Não tem uma conta?{" "}
-          <Link to="/register" className="text-slate-900 font-medium hover:underline">
-            Criar conta
+          O acesso é criado pela equipe de pesquisa.{" "}
+          <Link to="/" className="text-slate-900 font-medium hover:underline">
+            Voltar ao início
           </Link>
         </p>
       </div>
