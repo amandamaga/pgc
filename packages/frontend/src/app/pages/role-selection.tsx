@@ -60,7 +60,7 @@ export function RoleSelectionPage() {
 
             {/* Participante Card */}
             <button
-              onClick={() => navigate("/game-preview")}
+              onClick={() => navigate("/participant")}
               className="group text-left bg-white rounded-lg border border-slate-200 p-8 hover:border-slate-900 hover:shadow-md transition-all"
             >
               <div className="flex items-start gap-4 mb-6">

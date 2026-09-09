@@ -48,12 +48,40 @@ export interface SessionInfo {
   status: string;
 }
 
+// O nome do parceiro está sempre presente; judgment e punishment só chegam
+// preenchidos depois que este participante respondeu a mesma etapa.
+export interface PartnerInfo {
+  slot: "P1" | "P2";
+  displayName: string;
+  judgment: "Just" | "Unjust" | null;
+  punishment: "Punish" | "NoPunish" | null;
+  hasAck: boolean;
+  coinsAfter: number | null;
+}
+
+// A própria resposta desta tentativa, para a tela sobreviver a um refresh.
+export interface OwnResponseInfo {
+  judgment: "Just" | "Unjust" | null;
+  punishment: "Punish" | "NoPunish" | null;
+  hasAck: boolean;
+}
+
 export interface ParticipantState {
   participant: ParticipantInfo;
   session: SessionInfo;
   stage: Stage;
   currentAttempt: CurrentAttempt | null;
   trialResult: TrialResult | null;
+  partner: PartnerInfo | null;
+  own: OwnResponseInfo;
+  balances: Balances;
+}
+
+// Saldos correntes — presentes em todo estágio, inclusive antes do resultado.
+export interface Balances {
+  ownCoins: number;
+  partnerCoins: number;
+  groupCoins: number;
 }
 
 export class ApiError extends Error {

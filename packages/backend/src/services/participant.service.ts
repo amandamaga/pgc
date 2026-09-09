@@ -7,6 +7,7 @@
  */
 
 import { prisma } from '../config/prisma';
+import { INITIAL_COINS } from '../domain/experiment.types';
 import { SessionBootstrapError } from './session.drafts';
 import { deriveStage } from './participant.stage';
 import type { ParticipantStage, OwnResponse, PartnerStatus } from './participant.stage';
@@ -33,6 +34,52 @@ export type TrialResultView = {
   groupCoinsAfter:      number;
 };
 
+/**
+ * Visão do parceiro.
+ *
+ * `judgment` e `punishment` só são preenchidos DEPOIS que este participante
+ * respondeu a mesma etapa — conforme o fluxo desenhado ("esta caixa só deve
+ * aparecer depois que 'você' responder"). Antes disso vêm null, para que a
+ * resposta do parceiro não influencie a escolha própria.
+ *
+ * `displayName` é sempre exposto: a dupla joga lado a lado e o fluxo chama o
+ * parceiro pelo nome, não pela sigla.
+ */
+export type PartnerView = {
+  slot:        string;
+  displayName: string;
+  judgment:    string | null;
+  punishment:  string | null;
+  hasAck:      boolean;
+  /** Moedas do parceiro após a última tentativa resolvida; null antes disso. */
+  coinsAfter:  number | null;
+};
+
+/**
+ * A própria resposta desta tentativa. Devolvida para que a tela possa mostrar
+ * a escolha já feita sem guardar estado no navegador — um refresh no meio da
+ * tentativa não perde o que a criança marcou.
+ */
+export type OwnView = {
+  judgment:   string | null;
+  punishment: string | null;
+  hasAck:     boolean;
+};
+
+/**
+ * Saldos correntes, sempre presentes.
+ *
+ * O `trialResult` só existe quando a tentativa atual já foi resolvida, mas a
+ * tela mostra as moedas o tempo todo — inclusive durante o julgamento. Estes
+ * valores vêm da última tentativa resolvida da sessão, ou do estado inicial
+ * quando nenhuma foi.
+ */
+export type BalancesView = {
+  ownCoins:     number;
+  partnerCoins: number;
+  groupCoins:   number;
+};
+
 export type ParticipantStateResult = {
   participant: {
     id:              string;
@@ -47,6 +94,9 @@ export type ParticipantStateResult = {
   stage:          ParticipantStage;
   currentAttempt: CurrentAttemptView | null;
   trialResult:    TrialResultView | null;
+  partner:        PartnerView | null;
+  own:            OwnView;
+  balances:       BalancesView;
 };
 
 // ---------------------------------------------------------------------------
@@ -130,6 +180,34 @@ export async function getParticipantState(accessToken: string): Promise<Particip
     data: { joinedAt: sp.joinedAt ?? now, lastSeenAt: now },
   });
 
+  // O parceiro da dupla. O nome está sempre disponível; as respostas só são
+  // reveladas depois que este participante responder (ver PartnerView).
+  const partnerRecord = await prisma.sessionParticipant.findFirst({
+    where: { sessionId: sp.sessionId, id: { not: sp.id } },
+    select: { id: true, slot: true, displayName: true },
+  });
+  const partnerIdentity = partnerRecord
+    ? { slot: partnerRecord.slot, displayName: partnerRecord.displayName }
+    : null;
+
+  // Saldo corrente: última tentativa resolvida da sessão, ou o estado inicial.
+  const isP1Slot = sp.slot === 'P1';
+  const lastResolved = await prisma.attempt.findFirst({
+    where: { sessionId: sp.sessionId, trialRecord: { isNot: null } },
+    orderBy: { globalNumber: 'desc' },
+    select: {
+      trialRecord: {
+        select: { p1CoinsAfter: true, p2CoinsAfter: true, groupCoinsAfter: true },
+      },
+    },
+  });
+  const lastTr = lastResolved?.trialRecord ?? null;
+  const balances: BalancesView = {
+    ownCoins:     lastTr ? (isP1Slot ? lastTr.p1CoinsAfter : lastTr.p2CoinsAfter) : INITIAL_COINS,
+    partnerCoins: lastTr ? (isP1Slot ? lastTr.p2CoinsAfter : lastTr.p1CoinsAfter) : INITIAL_COINS,
+    groupCoins:   lastTr ? lastTr.groupCoinsAfter : 0,
+  };
+
   const sessionStatus = sp.session.status;
 
   if (sessionStatus === 'WAITING' || sessionStatus === 'COMPLETED') {
@@ -144,6 +222,11 @@ export async function getParticipantState(accessToken: string): Promise<Particip
       stage,
       currentAttempt: null,
       trialResult:    null,
+      partner: partnerIdentity
+        ? { ...partnerIdentity, judgment: null, punishment: null, hasAck: false, coinsAfter: null }
+        : null,
+      own: { judgment: null, punishment: null, hasAck: false },
+      balances,
     };
   }
 
@@ -154,6 +237,10 @@ export async function getParticipantState(accessToken: string): Promise<Particip
   let trialResult:    TrialResultView | null    = null;
   let ownResponse:    OwnResponse               = null;
   let partnerStatus:  PartnerStatus | null      = null;
+  let partnerView:    PartnerView | null        = partnerIdentity
+    ? { ...partnerIdentity, judgment: null, punishment: null, hasAck: false, coinsAfter: null }
+    : null;
+  let ownView:        OwnView                   = { judgment: null, punishment: null, hasAck: false };
 
   if (attempt) {
     currentAttempt = {
@@ -173,6 +260,12 @@ export async function getParticipantState(accessToken: string): Promise<Particip
           resultAcknowledgedAt: ownRaw.resultAcknowledgedAt }
       : null;
 
+    ownView = {
+      judgment:   ownRaw?.judgment   ?? null,
+      punishment: ownRaw?.punishment ?? null,
+      hasAck:     !!(ownRaw?.resultAcknowledgedAt),
+    };
+
     // Status do parceiro (o outro slot)
     const partnerRaw = attempt.responses.find((r: RawResponse) => r.sessionParticipantId !== sp.id);
     partnerStatus = {
@@ -180,6 +273,19 @@ export async function getParticipantState(accessToken: string): Promise<Particip
       hasPunishment: !!(partnerRaw?.punishment),
       hasAck:        !!(partnerRaw?.resultAcknowledgedAt),
     };
+
+    // A resposta do parceiro só aparece depois que este participante respondeu
+    // a mesma etapa — antes disso ela influenciaria a escolha.
+    if (partnerIdentity) {
+      partnerView = {
+        ...partnerIdentity,
+        judgment:   ownRaw?.judgment   ? (partnerRaw?.judgment   ?? null) : null,
+        punishment: ownRaw?.punishment ? (partnerRaw?.punishment ?? null) : null,
+        hasAck:     !!(partnerRaw?.resultAcknowledgedAt),
+        // Preenchido logo abaixo, quando a tentativa já tem TrialRecord.
+        coinsAfter: partnerView?.coinsAfter ?? null,
+      };
+    }
 
     // Resultado observável (apenas se attempt já foi finalizado com TrialRecord)
     const attemptFinalized = !!(attempt.trialRecord && attempt.completedAt);
@@ -200,6 +306,9 @@ export async function getParticipantState(accessToken: string): Promise<Particip
         culturalConsequence: tr.culturalConsequence,
         groupCoinsAfter:     tr.groupCoinsAfter,
       };
+
+      // Moedas do parceiro — desfecho da tentativa, revelado junto com o resto.
+      if (partnerView) partnerView.coinsAfter = isP1 ? tr.p2CoinsAfter : tr.p1CoinsAfter;
     }
   }
 
@@ -215,5 +324,8 @@ export async function getParticipantState(accessToken: string): Promise<Particip
     stage,
     currentAttempt,
     trialResult,
+    partner: partnerView,
+    own: ownView,
+    balances,
   };
 }
