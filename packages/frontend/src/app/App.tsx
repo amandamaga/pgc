@@ -8,14 +8,9 @@ import { RoleSelectionPage } from "./pages/role-selection";
 import { LoginPage } from "./pages/login";
 import { RegisterPage } from "./pages/register";
 import { DashboardPage } from "./pages/dashboard";
-import { CreateExperimentPage } from "./pages/create-experiment";
-import { ExperimentDetailsPage } from "./pages/experiment-details";
-import { SessionsPage } from "./pages/sessions";
-import { SessionMonitorPage } from "./pages/session-monitor";
 import { GameWaitingPage } from "./pages/game/waiting";
 import { GameIntroPage } from "./pages/game/intro";
 import { GameEndPage } from "./pages/game/end";
-import { ExperimentProvider } from "./context/experiment-context";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { getLang, translations, type Lang } from "./lib/game-i18n";
 import { GameButton } from "./components/game/game-button";
@@ -89,9 +84,9 @@ const R=createBrowserRouter([
   {path:"/researcher/sessions/:sessionId/monitor",Component:DashboardLayout,children:[{index:true,Component:ResearcherSessionPanelPage}]},
   {path:"/participant",Component:ParticipantAccessPage},
   {path:"/",Component:RoleSelectionPage},
-  {path:"/researcher",Component:DashboardLayout,children:[{index:true,Component:DashboardPage},{path:"experiments/new",Component:CreateExperimentPage},{path:"experiments/:id",Component:ExperimentDetailsPage},{path:"experiments/:id/sessions",Component:SessionsPage},{path:"experiments/:id/sessions/:sessionId/monitor",Component:SessionMonitorPage}]},
+  {path:"/researcher",Component:DashboardLayout,children:[{index:true,Component:DashboardPage}]},
   {path:"/login",Component:LoginPage},{path:"/register",Component:RegisterPage},
   {path:"/session/:sessionId/participant/:participantId",Component:GameLayout,children:[{index:true,Component:GameIntroPage},{path:"waiting",Component:GameWaitingPage},{path:"flow-vertical",Component:Game},{path:"end",Component:GameEndPage},{path:"*",Component:GameIntroPage}]},
   {path:"/game-preview",Component:GameLayout,children:[{index:true,Component:GameIntroPage},{path:"intro",Component:GameIntroPage},{path:"waiting",Component:GameWaitingPage},{path:"flow-vertical",Component:Game},{path:"end",Component:GameEndPage},{path:"*",Component:GameIntroPage}]},
 ]);
-export default function App(){return <ExperimentProvider><RouterProvider router={R}/></ExperimentProvider>;}
+export default function App(){return <RouterProvider router={R}/>;}
