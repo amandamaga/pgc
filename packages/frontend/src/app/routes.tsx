@@ -1,6 +1,7 @@
-import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter } from "react-router";
 import { DashboardLayout } from "./layouts/dashboard-layout";
 import { GameLayout } from "./layouts/game-layout";
+import { RedirectToLoginPage } from "./pages/redirect-to-login";
 import { LoginPage } from "./pages/login";
 import { RegisterPage } from "./pages/register";
 import { DashboardPage } from "./pages/dashboard";
@@ -18,7 +19,7 @@ export const router = createBrowserRouter([
   // ── Root redirect to login ─────────────────────────────────────────────────
   {
     path: "/",
-    Component: () => <Navigate to="/login" replace />,
+    Component: RedirectToLoginPage,
   },
   // ── Dashboard routes (autenticadas) ────────────────────────────────────────
   {
