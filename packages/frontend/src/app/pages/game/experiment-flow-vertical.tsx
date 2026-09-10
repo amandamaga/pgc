@@ -8,6 +8,12 @@ import { useParticipantState } from "../../hooks/use-participant-state";
 
 const SIDEBAR_W = 56;
 
+// Janela de tolerância para considerar o parceiro desconectado. secondsSinceSeen
+// cresce normalmente durante o turno do parceiro (sem polling nesse momento), então
+// um valor curto geraria falsos alarmes só porque a criança está pensando na
+// resposta. 75s é o meio da janela de 60-90s combinada para este fluxo.
+const PARTNER_DISCONNECT_THRESHOLD_SECONDS = 75;
+
 // Prelúdio local de cada história: só animação, nada disso vai para o servidor.
 // O servidor decide o que perguntar; estes passos decidem quando mostrar.
 type Prelude = "intro" | "dividing" | "divided" | "ready";
@@ -25,12 +31,12 @@ function CoinDot({ size = 8 }: { size?: number }) {
 }
 
 // ── Coin dot grid (4-col) ─────────────────────────────────────────────────────
-function CoinDotGrid({ count, maxDots = 12, dotSize = 7, cols = 4 }: {
-  count: number; maxDots?: number; dotSize?: number; cols?: number;
+function CoinDotGrid({ count, maxDots = 12, dotSize = 7, cols = 4, gap = 2 }: {
+  count: number; maxDots?: number; dotSize?: number; cols?: number; gap?: number;
 }) {
   const active = Math.min(count, maxDots);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, ${dotSize}px)`, gap: 2 }}>
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, ${dotSize}px)`, gap }}>
       {Array.from({ length: maxDots }, (_, i) => (
         <div key={i} style={{ visibility: i < active ? "visible" : "hidden" }}>
           <CoinDot size={dotSize} />
@@ -46,11 +52,9 @@ function CoinDotGrid({ count, maxDots = 12, dotSize = 7, cols = 4 }: {
 function SidebarCoins({ count, label, flash = false, align = "left", max = 80 }: {
   count: number; label: string; flash?: boolean; align?: "left" | "right"; max?: number;
 }) {
-  const blocks = 10;
-  const filled = max > 0 ? Math.ceil((Math.max(0, count) / max) * blocks) : 0;
   return (
     <motion.div
-      className="h-full flex flex-col items-center pt-3 pb-4 gap-1"
+      className="h-full flex flex-col items-center pt-3 pb-4 gap-1 overflow-y-auto"
       style={{
         width: SIDEBAR_W, flexShrink: 0,
         backgroundColor: "rgba(245,240,232,0.6)",
@@ -60,17 +64,8 @@ function SidebarCoins({ count, label, flash = false, align = "left", max = 80 }:
       animate={flash ? { backgroundColor: ["rgba(255,75,75,0.05)", "rgba(255,75,75,0.25)", "rgba(245,240,232,0.6)"] } : {}}
       transition={{ duration: 0.5 }}
     >
-      <div className="flex flex-col-reverse gap-[3px] mb-1" aria-hidden>
-        {Array.from({ length: blocks }, (_, i) => (
-          <div
-            key={i}
-            style={{
-              width: 22, height: 7, borderRadius: 3,
-              backgroundColor: i < filled ? "#FFD900" : "#E7E1D4",
-              border: `1px solid ${i < filled ? "#CE9200" : "#DDD8CE"}`,
-            }}
-          />
-        ))}
+      <div className="mb-1" aria-hidden>
+        <CoinDotGrid count={count} maxDots={max} dotSize={8} cols={4} gap={3} />
       </div>
       <span className="font-nunito font-black" style={{ fontSize: 18, color: "#58CC02", lineHeight: 1 }}>
         {count}
@@ -354,6 +349,14 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   const balances = state?.balances ?? null;
   const partnerName = partner?.displayName ?? "seu parceiro";
   const attemptId = attempt?.id ?? null;
+
+  // "Parceiro desconectado": só faz sentido enquanto EU estou esperando por ele
+  // (ele não estaria fazendo polling durante o próprio turno de qualquer jeito).
+  // Some sozinho quando secondsSinceSeen volta a ficar abaixo da janela.
+  const waitingForPartner = stage === "WAITING_JUDGMENT_PARTNER" || stage === "WAITING_PUNISHMENT_PARTNER" || stage === "WAITING_RESULT_PARTNER";
+  const partnerDisconnected = waitingForPartner
+    && partner?.secondsSinceSeen != null
+    && partner.secondsSinceSeen > PARTNER_DISCONNECT_THRESHOLD_SECONDS;
 
   const [prelude, setPrelude] = useState<Prelude>("intro");
   const [coinLostFlash, setCoinLostFlash] = useState(false);
@@ -819,6 +822,51 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                       {msg}
                     </span>
                   </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Parceiro desconectado — sinal real (secondsSinceSeen), some sozinho quando ele volta */}
+      <AnimatePresence>
+        {partnerDisconnected && (
+          <motion.div
+            key="partner-disconnected"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[60] flex items-center justify-center px-5"
+            style={{ backgroundColor: "rgba(15,15,15,0.82)", backdropFilter: "blur(4px)" }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 22 }}
+              className="bg-white rounded-3xl p-8 text-center shadow-2xl flex flex-col items-center gap-4"
+              style={{ maxWidth: 340, width: "90%" }}
+            >
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: "#FFF0F0" }}>
+                <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
+                  <circle cx="20" cy="20" r="18" fill="#FF4B4B" opacity="0.15" />
+                  <circle cx="20" cy="20" r="7" stroke="#FF4B4B" strokeWidth="2.5" fill="none" />
+                  <path d="M8 8 L32 32" stroke="#FF4B4B" strokeWidth="2.5" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="font-nunito font-black text-xl mb-1" style={{ color: "#3C3C3C" }}>
+                  {partnerName} pode ter se desconectado
+                </h2>
+                <p className="font-nunito font-bold text-sm" style={{ color: "#8B8B8B" }}>
+                  Sem notícias há um tempo. Isso volta sozinho assim que a conexão for reestabelecida.
+                </p>
+              </div>
+              <div className="flex gap-2" aria-hidden>
+                {[0, 1, 2].map((i) => (
+                  <motion.div key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: "#FF4B4B" }}
+                    animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }} />
                 ))}
               </div>
             </motion.div>

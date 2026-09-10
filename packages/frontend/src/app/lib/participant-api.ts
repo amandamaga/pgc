@@ -57,6 +57,12 @@ export interface PartnerInfo {
   punishment: "Punish" | "NoPunish" | null;
   hasAck: boolean;
   coinsAfter: number | null;
+  // Segundos desde a última vez que o parceiro buscou o próprio estado,
+  // calculado no servidor. Null se o parceiro nunca foi visto. Não é um
+  // heartbeat: cresce normalmente durante o turno do parceiro (quando ele
+  // não está numa etapa de espera e por isso não faz polling) — só deve ser
+  // usado com uma janela de tolerância longa (60-90s) para detectar desconexão.
+  secondsSinceSeen: number | null;
 }
 
 // A própria resposta desta tentativa, para a tela sobreviver a um refresh.

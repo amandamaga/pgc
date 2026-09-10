@@ -53,6 +53,19 @@ export type PartnerView = {
   hasAck:      boolean;
   /** Moedas do parceiro após a última tentativa resolvida; null antes disso. */
   coinsAfter:  number | null;
+  /**
+   * Segundos desde a última vez que o parceiro consultou o próprio estado
+   * (lastSeenAt), calculados no servidor para não depender do relógio do
+   * dispositivo do participante. Null se o parceiro nunca foi visto.
+   *
+   * Isto NÃO é um heartbeat: o parceiro só é "visto" quando busca o próprio
+   * estado, o que só acontece automaticamente enquanto ele está numa etapa de
+   * espera (ver WAITING_STAGES no front). Durante o próprio turno do parceiro
+   * (julgando/punindo), esse valor cresce normalmente — é esperado que passe
+   * dezenas de segundos sem atualização. O consumidor deve usar uma janela de
+   * tolerância longa (60-90s) antes de considerar o parceiro desconectado.
+   */
+  secondsSinceSeen: number | null;
 };
 
 /**
@@ -184,10 +197,13 @@ export async function getParticipantState(accessToken: string): Promise<Particip
   // reveladas depois que este participante responder (ver PartnerView).
   const partnerRecord = await prisma.sessionParticipant.findFirst({
     where: { sessionId: sp.sessionId, id: { not: sp.id } },
-    select: { id: true, slot: true, displayName: true },
+    select: { id: true, slot: true, displayName: true, lastSeenAt: true },
   });
   const partnerIdentity = partnerRecord
     ? { slot: partnerRecord.slot, displayName: partnerRecord.displayName }
+    : null;
+  const partnerSecondsSinceSeen = partnerRecord?.lastSeenAt
+    ? Math.max(0, Math.floor((now.getTime() - partnerRecord.lastSeenAt.getTime()) / 1000))
     : null;
 
   // Saldo corrente: última tentativa resolvida da sessão, ou o estado inicial.
@@ -223,7 +239,7 @@ export async function getParticipantState(accessToken: string): Promise<Particip
       currentAttempt: null,
       trialResult:    null,
       partner: partnerIdentity
-        ? { ...partnerIdentity, judgment: null, punishment: null, hasAck: false, coinsAfter: null }
+        ? { ...partnerIdentity, judgment: null, punishment: null, hasAck: false, coinsAfter: null, secondsSinceSeen: partnerSecondsSinceSeen }
         : null,
       own: { judgment: null, punishment: null, hasAck: false },
       balances,
@@ -238,7 +254,7 @@ export async function getParticipantState(accessToken: string): Promise<Particip
   let ownResponse:    OwnResponse               = null;
   let partnerStatus:  PartnerStatus | null      = null;
   let partnerView:    PartnerView | null        = partnerIdentity
-    ? { ...partnerIdentity, judgment: null, punishment: null, hasAck: false, coinsAfter: null }
+    ? { ...partnerIdentity, judgment: null, punishment: null, hasAck: false, coinsAfter: null, secondsSinceSeen: partnerSecondsSinceSeen }
     : null;
   let ownView:        OwnView                   = { judgment: null, punishment: null, hasAck: false };
 
@@ -284,6 +300,7 @@ export async function getParticipantState(accessToken: string): Promise<Particip
         hasAck:     !!(partnerRaw?.resultAcknowledgedAt),
         // Preenchido logo abaixo, quando a tentativa já tem TrialRecord.
         coinsAfter: partnerView?.coinsAfter ?? null,
+        secondsSinceSeen: partnerSecondsSinceSeen,
       };
     }
 
