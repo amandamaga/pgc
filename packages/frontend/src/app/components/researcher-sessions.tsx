@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
@@ -101,7 +101,6 @@ export function ResearcherSessions() {
                   <TableHead>Status</TableHead>
                   <TableHead>Criada em</TableHead>
                   <TableHead>Sequência</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -112,14 +111,31 @@ export function ResearcherSessions() {
                         <TableCell><Skeleton className="h-5 w-28" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-28" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-14" /></TableCell>
-                        <TableCell><Skeleton className="ml-auto h-8 w-56" /></TableCell>
                       </TableRow>
                     ))
                   : sessions.map((session) => {
                       const status = statuses[session.status];
+                      const href = `/researcher/sessions/${encodeURIComponent(session.id)}`;
                       return (
-                        <TableRow key={session.id}>
-                          <TableCell className="font-medium">{session.name}</TableCell>
+                        <TableRow
+                          key={session.id}
+                          className="cursor-pointer"
+                          onClick={() => {
+                            // Um clique que encerra uma selecao de texto nao deve navegar:
+                            // copiar o nome da sessao tem que continuar possivel.
+                            if (window.getSelection()?.toString()) return;
+                            navigate(href);
+                          }}
+                        >
+                          <TableCell className="font-medium">
+                            <Link
+                              to={href}
+                              className="hover:underline"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {session.name}
+                            </Link>
+                          </TableCell>
                           <TableCell>
                             <Badge variant={status?.variant ?? "outline"}>
                               {status?.label ?? session.status}
@@ -127,32 +143,6 @@ export function ResearcherSessions() {
                           </TableCell>
                           <TableCell>{dateFormat.format(new Date(session.createdAt))}</TableCell>
                           <TableCell>{session.sequenceVariant}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                  navigate(
-                                    `/researcher/sessions/${encodeURIComponent(session.id)}/participants`,
-                                  )
-                                }
-                              >
-                                Participantes
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                  navigate(
-                                    `/researcher/sessions/${encodeURIComponent(session.id)}/monitor`,
-                                  )
-                                }
-                              >
-                                Monitorar sessão
-                              </Button>
-                            </div>
-                          </TableCell>
                         </TableRow>
                       );
                     })}
