@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { ResearcherSessionPanelPage } from "./pages/researcher-session-panel";
 import { ParticipantAccessPage } from "./pages/game/participant-access";
-import { createBrowserRouter, RouterProvider } from "react-router";
+import { createBrowserRouter, RouterProvider, redirect } from "react-router";
 import { DashboardLayout } from "./layouts/dashboard-layout";
 import { GameLayout } from "./layouts/game-layout";
-import { RoleSelectionPage } from "./pages/role-selection";
 import { LoginPage } from "./pages/login";
 import { RegisterPage } from "./pages/register";
 import { DashboardPage } from "./pages/dashboard";
@@ -83,7 +82,7 @@ function Game(){
 const R=createBrowserRouter([
   {path:"/researcher/sessions/:sessionId/monitor",Component:DashboardLayout,children:[{index:true,Component:ResearcherSessionPanelPage}]},
   {path:"/participant",Component:ParticipantAccessPage},
-  {path:"/",Component:RoleSelectionPage},
+  {path:"/",loader:()=>redirect("/login")},
   {path:"/researcher",Component:DashboardLayout,children:[{index:true,Component:DashboardPage}]},
   {path:"/login",Component:LoginPage},{path:"/register",Component:RegisterPage},
   {path:"/session/:sessionId/participant/:participantId",Component:GameLayout,children:[{index:true,Component:GameIntroPage},{path:"waiting",Component:GameWaitingPage},{path:"flow-vertical",Component:Game},{path:"end",Component:GameEndPage},{path:"*",Component:GameIntroPage}]},
