@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
-import { Button } from "./button";
+import { Button } from "./ui/button";
 import { ParticipantAccessLinks } from "./participant-access";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { addSessionParticipant, getSession, startSession, ResearcherApiError, type SessionDetails } from "../lib/researcher-api";
@@ -82,7 +82,7 @@ export function SessionParticipantsDialog({ sessionId, sessionName, onStarted }:
       setOpen(value);
       setNotice("");
     }}>
-      <DialogTrigger asChild><Button variant="outline" size="sm" className="mt-3">Participantes</Button></DialogTrigger>
+      <DialogTrigger asChild><Button variant="outline" size="sm">Participantes</Button></DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Participantes da sessão</DialogTitle>

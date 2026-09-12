@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { ResearcherSessionPanelPage } from "./pages/researcher-session-panel";
+import { SessionParticipantsPage } from "./pages/session-participants";
 import { ParticipantAccessPage } from "./pages/game/participant-access";
 import { createBrowserRouter, RouterProvider, redirect } from "react-router";
 import { DashboardLayout } from "./layouts/dashboard-layout";
@@ -81,6 +82,7 @@ function Game(){
 }
 const R=createBrowserRouter([
   {path:"/researcher/sessions/:sessionId/monitor",Component:DashboardLayout,children:[{index:true,Component:ResearcherSessionPanelPage}]},
+  {path:"/researcher/sessions/:sessionId/participants",Component:DashboardLayout,children:[{index:true,Component:SessionParticipantsPage}]},
   {path:"/participant",Component:ParticipantAccessPage},
   {path:"/",loader:()=>redirect("/login")},
   {path:"/researcher",Component:DashboardLayout,children:[{index:true,Component:DashboardPage}]},

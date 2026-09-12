@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
-import { Button } from "./button";
+import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { createSession, ResearcherApiError, type CreateSessionInput } from "../lib/researcher-api";
 

@@ -1,15 +1,30 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { Button } from "./button";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card, CardContent } from "./ui/card";
+import { Skeleton } from "./ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
 import { CreateSessionDialog } from "./create-session-dialog";
-import { SessionParticipantsDialog } from "./session-participants-dialog";
 import { listSessions, ResearcherApiError, type ResearcherSession } from "../lib/researcher-api";
 
 const statuses = {
-  WAITING: { label: "Aguardando início", style: "bg-blue-50 text-blue-700 border-blue-200" },
-  IN_PROGRESS: { label: "Em execução", style: "bg-amber-50 text-amber-700 border-amber-200" },
-  COMPLETED: { label: "Concluída", style: "bg-green-50 text-green-700 border-green-200" },
-};
+  WAITING: { label: "Aguardando início", variant: "outline" },
+  IN_PROGRESS: { label: "Em execução", variant: "default" },
+  COMPLETED: { label: "Concluída", variant: "secondary" },
+} as const;
+
+const dateFormat = new Intl.DateTimeFormat("pt-BR", {
+  dateStyle: "short",
+  timeStyle: "short",
+});
 
 export function ResearcherSessions() {
   const navigate = useNavigate();
@@ -17,12 +32,12 @@ export function ResearcherSessions() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const refresh = () => setRevision((value) => value + 1);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError("");
-    setSessions([]);
     listSessions(controller.signal).then((data) => {
       if (!controller.signal.aborted) setSessions(data);
     }).catch((err: unknown) => {
@@ -38,33 +53,114 @@ export function ResearcherSessions() {
     return () => controller.abort();
   }, [navigate, revision]);
 
+  const firstLoad = loading && sessions.length === 0;
+
   return (
-    <section className="bg-white border border-slate-200 rounded-lg overflow-hidden mb-8" aria-label="Sessões da pesquisadora" aria-busy={loading}>
-      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between gap-4">
+    <section aria-labelledby="sessoes-titulo" aria-busy={loading}>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Sessões da pesquisadora</h2>
-          <p className="text-sm text-slate-500">Todas as suas sessões salvas no servidor, ainda sem vínculo com experimentos.</p>
+          <h1 id="sessoes-titulo" className="text-2xl font-semibold tracking-tight">
+            Sessões
+          </h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Gerencie e monitore as sessões dos participantes
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" disabled={loading} onClick={() => setRevision((value) => value + 1)}>Atualizar</Button>
-          <CreateSessionDialog onCreated={() => setRevision((value) => value + 1)} />
+          <Button variant="outline" size="sm" disabled={loading} onClick={refresh}>
+            Atualizar
+          </Button>
+          <CreateSessionDialog onCreated={refresh} />
         </div>
       </div>
-      {loading ? <p role="status" className="p-6 text-sm text-slate-500">Carregando sessões...</p>
-        : error ? <div role="alert" className="p-6 text-sm text-red-700"><p className="mb-3">{error}</p><Button variant="outline" onClick={() => setRevision((value) => value + 1)}>Tentar novamente</Button></div>
-        : sessions.length === 0 ? <p className="p-6 text-sm text-slate-500">Nenhuma sessão cadastrada no servidor.</p>
-        : <div className="divide-y divide-slate-200">{sessions.map((session) => {
-          const status = statuses[session.status];
-          return <div key={session.id} className="px-6 py-4 hover:bg-slate-50 transition-colors">
-            <div className="flex flex-wrap items-center gap-3 mb-2">
-              <h3 className="font-medium text-slate-900">{session.name}</h3>
-              <span className={"inline-flex px-2 py-0.5 rounded-full text-xs font-medium border " + (status?.style ?? "border-slate-200")}>{status?.label ?? session.status}</span>
+
+      <Card>
+        <CardContent className="py-6">
+          {error ? (
+            <div role="alert" className="text-sm">
+              <p className="text-destructive mb-3">{error}</p>
+              <Button variant="outline" size="sm" onClick={refresh}>
+                Tentar novamente
+              </Button>
             </div>
-            <p className="text-sm text-slate-600">Criada em {new Date(session.createdAt).toLocaleString("pt-BR")} · Sequência {session.sequenceVariant}</p>
-            <SessionParticipantsDialog sessionId={session.id} sessionName={session.name} onStarted={() => setSessions((current) => current.map((item) => item.id === session.id ? { ...item, status: "IN_PROGRESS" } : item))} />
-            <Button variant="outline" size="sm" className="mt-3 ml-2" onClick={() => navigate(`/researcher/sessions/${encodeURIComponent(session.id)}/monitor`)}>Monitorar sessão</Button>
-          </div>;
-        })}</div>}
+          ) : !firstLoad && sessions.length === 0 ? (
+            <div className="py-8 text-center">
+              <p className="text-sm font-medium">Nenhuma sessão cadastrada</p>
+              <p className="text-muted-foreground mx-auto mt-1 max-w-sm text-sm">
+                Crie a primeira sessão para gerar os links de acesso dos participantes.
+              </p>
+              <div className="mt-4 flex justify-center">
+                <CreateSessionDialog onCreated={refresh} />
+              </div>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Sessão</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Criada em</TableHead>
+                  <TableHead>Sequência</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {firstLoad
+                  ? [0, 1, 2].map((row) => (
+                      <TableRow key={row}>
+                        <TableCell><Skeleton className="h-5 w-44" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-28" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-28" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-14" /></TableCell>
+                        <TableCell><Skeleton className="ml-auto h-8 w-56" /></TableCell>
+                      </TableRow>
+                    ))
+                  : sessions.map((session) => {
+                      const status = statuses[session.status];
+                      return (
+                        <TableRow key={session.id}>
+                          <TableCell className="font-medium">{session.name}</TableCell>
+                          <TableCell>
+                            <Badge variant={status?.variant ?? "outline"}>
+                              {status?.label ?? session.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{dateFormat.format(new Date(session.createdAt))}</TableCell>
+                          <TableCell>{session.sequenceVariant}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  navigate(
+                                    `/researcher/sessions/${encodeURIComponent(session.id)}/participants`,
+                                  )
+                                }
+                              >
+                                Participantes
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  navigate(
+                                    `/researcher/sessions/${encodeURIComponent(session.id)}/monitor`,
+                                  )
+                                }
+                              >
+                                Monitorar sessão
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </section>
   );
 }

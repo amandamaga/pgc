@@ -1,7 +1,11 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router";
+import { useNavigate } from "react-router";
 import { FlaskConical } from "lucide-react";
-import { Button } from "../components/button";
+import { Alert, AlertDescription } from "../components/ui/alert";
+import { Button } from "../components/ui/button";
+import { Card, CardContent } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -39,17 +43,12 @@ export function LoginPage() {
       }
 
       localStorage.setItem("researcherToken", data.token);
-      localStorage.setItem(
-        "researcher",
-        JSON.stringify(data.researcher),
-      );
+      localStorage.setItem("researcher", JSON.stringify(data.researcher));
 
       navigate("/researcher");
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Erro ao conectar com o servidor.",
+        err instanceof Error ? err.message : "Erro ao conectar com o servidor.",
       );
     } finally {
       setLoading(false);
@@ -57,95 +56,63 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo and title */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center h-12 w-12 rounded-lg bg-slate-900 mb-4">
-            <FlaskConical className="h-6 w-6 text-white" />
+    <div className="bg-muted flex min-h-screen items-center justify-center p-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="bg-primary mb-4 inline-flex size-12 items-center justify-center rounded-lg">
+            <FlaskConical className="text-primary-foreground size-6" />
           </div>
-          <h1 className="text-2xl font-semibold text-slate-900">Hub de Pesquisa</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Hub de Pesquisa</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
             Entre para gerenciar seus experimentos
           </p>
         </div>
 
-        {/* Login form */}
-        <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-900 mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
-                placeholder="pesquisador@universidade.br"
-                required
-              />
-            </div>
+        <Card>
+          <CardContent className="py-6">
+            <form onSubmit={handleSubmit} className="space-y-4" aria-busy={loading}>
+              {error && (
+                <Alert variant="destructive" role="alert">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-            {/* Password */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-900 mb-2">
-                Senha
-              </label>
-              <input
-                type="password"
-                id="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-
-            {/* Remember me and forgot password */}
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  disabled={loading}
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="pesquisador@universidade.br"
                 />
-                <span className="text-sm text-slate-600">Lembrar de mim</span>
-              </label>
-              <button
-                type="button"
-                className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
-              >
-                Esqueceu a senha?
-              </button>
-            </div>
-
-            {/* Error message */}
-            {error && (
-              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3">
-                {error}
               </div>
-            )}
 
-            {/* Submit button */}
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={loading}
-            >
-              {loading ? "Entrando..." : "Entrar"}
-            </Button>
-          </form>
-        </div>
+              <div className="grid gap-2">
+                <Label htmlFor="password">Senha</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  disabled={loading}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                />
+              </div>
 
-        {/* Footer */}
-        <p className="text-center text-sm text-slate-500 mt-6">
-          O acesso é criado pela equipe de pesquisa.{" "}
-          <Link to="/" className="text-slate-900 font-medium hover:underline">
-            Voltar ao início
-          </Link>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Entrando..." : "Entrar"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <p className="text-muted-foreground mt-6 text-center text-sm">
+          O acesso é criado pela equipe de pesquisa.
         </p>
       </div>
     </div>
