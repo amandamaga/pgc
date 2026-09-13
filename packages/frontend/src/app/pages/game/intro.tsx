@@ -10,7 +10,7 @@ const mockExperimentConfig = {
 };
 
 
-export function GameIntroPage() {
+export function GameIntroPage({ onStart }: { onStart?: () => void } = {}) {
   const navigate = useNavigate();
   const { sessionId, participantId } = useParams();
 
@@ -33,6 +33,12 @@ export function GameIntroPage() {
   };
 
   const handleStart = () => {
+    // No fluxo real (/participant#token=) nao existe sessionId na URL — quem
+    // monta a tela decide o que acontece ao comecar.
+    if (onStart) {
+      onStart();
+      return;
+    }
     if (sessionId && participantId) {
       navigate(`/session/${sessionId}/participant/${participantId}/waiting`);
     } else {
@@ -99,9 +105,11 @@ export function GameIntroPage() {
                       autoFocus
                       className="w-full rounded-3xl border-2 border-b-[6px] px-6 py-5 font-nunito font-black text-2xl text-center outline-none transition-all duration-200 shadow-sm"
                       style={{
+                        // O preenchimento e o sinal de "isto se aperta" e pertence ao
+                        // botao. O campo fica claro; a borda e a mensagem carregam o estado.
                         borderColor: isValid ? "#46A302" : showError ? "#EA2B2B" : "#CACACA",
-                        backgroundColor: isValid ? "#58CC02" : showError ? "#FF4B4B" : "#FFFFFF",
-                        color: isValid || showError ? "#FFFFFF" : "#3C3C3C",
+                        backgroundColor: "#FFFFFF",
+                        color: "#3C3C3C",
                       }}
                     />
                     <AnimatePresence>
@@ -110,7 +118,7 @@ export function GameIntroPage() {
                           initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
                           transition={{ type: "spring", stiffness: 320, damping: 18 }}
                           className="absolute right-4 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center"
-                          style={{ backgroundColor: "rgba(255,255,255,0.25)" }}
+                          style={{ backgroundColor: "#58CC02" }}
                         >
                           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                             <path d="M3.5 9 L7.5 13 L14.5 5.5" stroke="white" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -130,7 +138,7 @@ export function GameIntroPage() {
                       )}
                       {isValid && (
                         <motion.p key="ok" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                          className="font-nunito font-black text-base" style={{ color: "#46A302" }}>
+                          className="font-nunito font-black text-lg" style={{ color: "#46A302" }}>
                           {T.hiName(trimmed)}
                         </motion.p>
                       )}
@@ -139,7 +147,9 @@ export function GameIntroPage() {
                 </div>
 
                 <div className="w-full">
-                  <GameButton onClick={handleNext} size="xl" className="w-full" disabled={!isValid}>
+                  {/* Habilitado de proposito: com disabled o onClick nunca roda, e a
+                      crianca aperta o botao sem receber resposta nenhuma. */}
+                  <GameButton onClick={handleNext} size="xl" className="w-full">
                     <span className="flex items-center justify-center gap-2">
                       {T.next}
                       <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
@@ -218,7 +228,7 @@ export function GameIntroPage() {
                   </GameButton>
 
                   {mockExperimentConfig.enableTutorialVideo && (
-                    <GameButton variant="blue" size="xl" className="w-full" onClick={() => setShowVideo((v) => !v)}>
+                    <GameButton variant="blue-outline" size="xl" className="w-full" onClick={() => setShowVideo((v) => !v)}>
                       <span className="flex items-center justify-center gap-2">
                         {showVideo ? (
                           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">

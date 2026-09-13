@@ -2,13 +2,6 @@ import { motion, AnimatePresence } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { PiggyBank } from "lucide-react";
 
-function FlatCoinSm() {
-  return (
-    null
-  );
-}
-
-
 interface PiggyBankCounterProps {
   count: number;
   label?: string;
@@ -62,21 +55,10 @@ export function PiggyBankCounter({ count, label = "Juntos" }: PiggyBankCounterPr
       <motion.div
         animate={pulse ? { scale: [1, 1.02, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, ease: "easeInOut" }}
-        className="w-full flex items-center justify-center py-1.5 cursor-default select-none px-[0px] py-[10px] gap-y-[8px] gap-x-[2px]"
+        className="w-full flex items-center justify-center gap-2 py-2.5 cursor-default select-none"
         style={{ backgroundColor: "#FFD900", boxShadow: "inset 0 1px 0 #E8C400" }}
       >
         <PiggyBank size={20} color="#6B4200" strokeWidth={2} />
-        
-        {count > 0 && (
-          <div className="flex items-center gap-0.5">
-            {Array.from({ length: count }, (_, i) => (
-              <motion.div key={i} initial={{ scale: 0, rotate: -180 }} animate={{ scale: 1, rotate: 0 }}
-                transition={{ delay: i * 0.05, type: "spring", stiffness: 400, damping: 18 }}>
-                <FlatCoinSm />
-              </motion.div>
-            ))}
-          </div>
-        )}
         <span className="font-nunito font-black text-lg leading-none" style={{ color: "#6B4200" }}>{count}</span>
       </motion.div>
     </div>
