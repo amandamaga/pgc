@@ -27,15 +27,19 @@ describe('EXPORT_COLUMNS — ordem exata', () => {
     'receptorCharacter',
     'distributorDistribution',
     'receptorDistribution',
+    'p1StoryShownAt',
     'p1Judgment',
     'p1JudgmentAt',
     'p1Punishment',
     'p1PunishmentAt',
+    'p1NextStoryAvailableAt',
     'p1ResultAcknowledgedAt',
+    'p2StoryShownAt',
     'p2Judgment',
     'p2JudgmentAt',
     'p2Punishment',
     'p2PunishmentAt',
+    'p2NextStoryAvailableAt',
     'p2ResultAcknowledgedAt',
     'consensus',
     'culturant',
@@ -53,8 +57,8 @@ describe('EXPORT_COLUMNS — ordem exata', () => {
     'attemptCompletedAt',
   ] as const;
 
-  it('contém exatamente 39 colunas', () => {
-    expect(EXPORT_COLUMNS.length).toBe(39);
+  it('contém exatamente 43 colunas', () => {
+    expect(EXPORT_COLUMNS.length).toBe(43);
   });
 
   it('ordem é exatamente a especificada', () => {
@@ -127,16 +131,20 @@ describe('ExportRow — suporte a null para dados incompletos', () => {
       distributorDistribution: 24,
       receptorDistribution:    8,
       // Respostas P1 — null (não respondeu ainda)
+      p1StoryShownAt:         null,
       p1Judgment:             null,
       p1JudgmentAt:           null,
       p1Punishment:           null,
       p1PunishmentAt:         null,
+      p1NextStoryAvailableAt: null,
       p1ResultAcknowledgedAt: null,
       // Respostas P2 — null
+      p2StoryShownAt:         null,
       p2Judgment:             null,
       p2JudgmentAt:           null,
       p2Punishment:           null,
       p2PunishmentAt:         null,
+      p2NextStoryAvailableAt: null,
       p2ResultAcknowledgedAt: null,
       // Resultado — null (não finalizado)
       consensus:              null,
@@ -191,15 +199,19 @@ describe('ExportRow — linha completa', () => {
       receptorCharacter:       'Isaac',
       distributorDistribution: 24,
       receptorDistribution:    8,
+      p1StoryShownAt:         now,
       p1Judgment:             'Unjust',
       p1JudgmentAt:           now,
       p1Punishment:           'Punish',
       p1PunishmentAt:         now,
+      p1NextStoryAvailableAt: now,
       p1ResultAcknowledgedAt: now,
+      p2StoryShownAt:         now,
       p2Judgment:             'Unjust',
       p2JudgmentAt:           now,
       p2Punishment:           'Punish',
       p2PunishmentAt:         now,
+      p2NextStoryAvailableAt: now,
       p2ResultAcknowledgedAt: now,
       consensus:              true,
       culturant:              'Cp',
@@ -217,7 +229,7 @@ describe('ExportRow — linha completa', () => {
       attemptCompletedAt: now,
     };
 
-    // Confirma que todos os 39 campos estão presentes
+    // Confirma que todos os 43 campos estão presentes
     const presentKeys = Object.keys(completeRow);
     expect(presentKeys.length).toBe(EXPORT_COLUMNS.length);
 

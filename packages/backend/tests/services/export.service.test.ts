@@ -14,6 +14,7 @@ vi.mock('../../src/config/prisma', () => ({
 }));
 
 import { buildExportRows } from '../../src/services/export.service';
+import { EXPORT_COLUMNS } from '../../src/domain/export.contract';
 import { SessionBootstrapError } from '../../src/services/session.drafts';
 import { prisma } from '../../src/config/prisma';
 
@@ -63,12 +64,20 @@ function makeTrialRecord(overrides: object = {}) {
 function makeResponse(spId: string, overrides: object = {}) {
   return {
     sessionParticipantId: spId,
+    storyShownAt: NOW,
     judgment: 'Unjust', judgmentAt: NOW,
     punishment: 'Punish', punishmentAt: NOW,
+    nextStoryAvailableAt: NOW,
     resultAcknowledgedAt: NOW,
     ...overrides,
   };
 }
+
+// Horários distintos por participante (F1.4): um engano P1↔P2 aparece no teste.
+const P1_STORY = new Date('2026-10-11T12:00:00.000Z');
+const P1_NEXT  = new Date('2026-10-11T12:00:41.000Z');
+const P2_STORY = new Date('2026-10-11T12:00:03.000Z');
+const P2_NEXT  = new Date('2026-10-11T12:00:44.000Z');
 
 beforeEach(() => { vi.resetAllMocks(); });
 
@@ -260,16 +269,23 @@ describe('buildExportRows — TrialRecord ausente', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildExportRows — linha completa', () => {
-  it('preenche todos os 39 campos corretamente', async () => {
+  it('preenche todos os 43 campos corretamente', async () => {
     vi.mocked(prisma.session.findUnique).mockResolvedValue(mockSession as never);
     vi.mocked(prisma.sessionParticipant.findMany).mockResolvedValue([mockP1, mockP2] as never);
     vi.mocked(prisma.attempt.findMany).mockResolvedValue([
       makeAttempt({
         trialRecord: makeTrialRecord(),
-        responses: [makeResponse(mockP1.id), makeResponse(mockP2.id)],
+        responses: [
+          makeResponse(mockP1.id, { storyShownAt: P1_STORY, nextStoryAvailableAt: P1_NEXT }),
+          makeResponse(mockP2.id, { storyShownAt: P2_STORY, nextStoryAvailableAt: P2_NEXT }),
+        ],
       }),
     ] as never);
     const [row] = await buildExportRows(SESS_ID, RES_ID);
+
+    // A linha tem exatamente as 43 chaves de EXPORT_COLUMNS, nem mais nem menos.
+    expect(EXPORT_COLUMNS.length).toBe(43);
+    expect(Object.keys(row).sort()).toEqual([...EXPORT_COLUMNS].sort());
 
     // Sessão
     expect(row.sessionId).toBe(SESS_ID);
@@ -291,11 +307,20 @@ describe('buildExportRows — linha completa', () => {
     expect(row.receptorDistribution).toBe(8);
 
     // Respostas
+    expect(row.p1StoryShownAt).toEqual(P1_STORY);
     expect(row.p1Judgment).toBe('Unjust');
+    expect(row.p1JudgmentAt).toEqual(NOW);
     expect(row.p1Punishment).toBe('Punish');
-    expect(row.p2Judgment).toBe('Unjust');
-    expect(row.p2Punishment).toBe('Punish');
+    expect(row.p1PunishmentAt).toEqual(NOW);
+    expect(row.p1NextStoryAvailableAt).toEqual(P1_NEXT);
     expect(row.p1ResultAcknowledgedAt).toEqual(NOW);
+    expect(row.p2StoryShownAt).toEqual(P2_STORY);
+    expect(row.p2Judgment).toBe('Unjust');
+    expect(row.p2JudgmentAt).toEqual(NOW);
+    expect(row.p2Punishment).toBe('Punish');
+    expect(row.p2PunishmentAt).toEqual(NOW);
+    expect(row.p2NextStoryAvailableAt).toEqual(P2_NEXT);
+    expect(row.p2ResultAcknowledgedAt).toEqual(NOW);
 
     // Resultado
     expect(row.consensus).toBe(true);
@@ -307,12 +332,131 @@ describe('buildExportRows — linha completa', () => {
     expect(row.distributorLost).toBe(16);
     expect(row.culturalConsequence).toBe(3);
     expect(row.p1CoinsAfter).toBe(79);
+    expect(row.p2CoinsAfter).toBe(79);
     expect(row.groupCoinsAfter).toBe(3);
     expect(row.disagreementCountAfter).toBe(0);
 
     // Timestamps
     expect(row.attemptStartedAt).toEqual(NOW);
     expect(row.attemptCompletedAt).toEqual(NOW);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7b. F1.4 — storyShownAt / nextStoryAvailableAt por participante
+// ---------------------------------------------------------------------------
+
+describe('buildExportRows — timestamps de apresentação e avanço (F1.4)', () => {
+  function setup(participants: object[], attempts: object[]) {
+    vi.mocked(prisma.session.findUnique).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.sessionParticipant.findMany).mockResolvedValue(participants as never);
+    vi.mocked(prisma.attempt.findMany).mockResolvedValue(attempts as never);
+  }
+
+  it('preenche os quatro novos timestamps a partir das responses', async () => {
+    setup([mockP1, mockP2], [makeAttempt({ responses: [
+      makeResponse(mockP1.id, { storyShownAt: P1_STORY, nextStoryAvailableAt: P1_NEXT }),
+      makeResponse(mockP2.id, { storyShownAt: P2_STORY, nextStoryAvailableAt: P2_NEXT }),
+    ] })]);
+    const [row] = await buildExportRows(SESS_ID, RES_ID);
+    expect(row.p1StoryShownAt).toEqual(P1_STORY);
+    expect(row.p1NextStoryAvailableAt).toEqual(P1_NEXT);
+    expect(row.p2StoryShownAt).toEqual(P2_STORY);
+    expect(row.p2NextStoryAvailableAt).toEqual(P2_NEXT);
+  });
+
+  it('participantes e responses fora de ordem → associação por slot e sessionParticipantId', async () => {
+    setup([mockP2, mockP1], [makeAttempt({ responses: [
+      makeResponse(mockP2.id, { storyShownAt: P2_STORY, nextStoryAvailableAt: P2_NEXT }),
+      makeResponse(mockP1.id, { storyShownAt: P1_STORY, nextStoryAvailableAt: P1_NEXT }),
+    ] })]);
+    const [row] = await buildExportRows(SESS_ID, RES_ID);
+    expect(row.p1StoryShownAt).toEqual(P1_STORY);
+    expect(row.p1NextStoryAvailableAt).toEqual(P1_NEXT);
+    expect(row.p2StoryShownAt).toEqual(P2_STORY);
+    expect(row.p2NextStoryAvailableAt).toEqual(P2_NEXT);
+  });
+
+  it('attempt sem nenhuma Response → os quatro são null', async () => {
+    setup([mockP1, mockP2], [makeAttempt({ responses: [] })]);
+    const [row] = await buildExportRows(SESS_ID, RES_ID);
+    expect(row.p1StoryShownAt).toBeNull();
+    expect(row.p1NextStoryAvailableAt).toBeNull();
+    expect(row.p2StoryShownAt).toBeNull();
+    expect(row.p2NextStoryAvailableAt).toBeNull();
+  });
+
+  it('só P1 tem Response → P2 null, P1 preenchido', async () => {
+    setup([mockP1, mockP2], [makeAttempt({ responses: [
+      makeResponse(mockP1.id, { storyShownAt: P1_STORY, nextStoryAvailableAt: P1_NEXT }),
+    ] })]);
+    const [row] = await buildExportRows(SESS_ID, RES_ID);
+    expect(row.p1StoryShownAt).toEqual(P1_STORY);
+    expect(row.p1NextStoryAvailableAt).toEqual(P1_NEXT);
+    expect(row.p2StoryShownAt).toBeNull();
+    expect(row.p2NextStoryAvailableAt).toBeNull();
+  });
+
+  it('Response existe mas timestamp ainda não registrado → null (sem herdar outro campo)', async () => {
+    // História já apresentada, mas a tentativa ainda não liberou o avanço.
+    setup([mockP1, mockP2], [makeAttempt({ completedAt: null, responses: [
+      makeResponse(mockP1.id, {
+        storyShownAt: P1_STORY, nextStoryAvailableAt: null,
+        punishment: null, punishmentAt: null, resultAcknowledgedAt: null,
+      }),
+      makeResponse(mockP2.id, {
+        storyShownAt: null, nextStoryAvailableAt: null,
+        judgment: null, judgmentAt: null, punishment: null, punishmentAt: null,
+        resultAcknowledgedAt: null,
+      }),
+    ] })]);
+    const [row] = await buildExportRows(SESS_ID, RES_ID);
+    expect(row.p1StoryShownAt).toEqual(P1_STORY);
+    expect(row.p1NextStoryAvailableAt).toBeNull();
+    expect(row.p2StoryShownAt).toBeNull();
+    expect(row.p2NextStoryAvailableAt).toBeNull();
+  });
+
+  it('Response vinda sem os campos (ex.: registro antigo) → null, não undefined', async () => {
+    const legacy = { sessionParticipantId: mockP1.id, judgment: 'Just', judgmentAt: NOW,
+      punishment: 'NoPunish', punishmentAt: NOW, resultAcknowledgedAt: NOW };
+    setup([mockP1, mockP2], [makeAttempt({ responses: [legacy] })]);
+    const [row] = await buildExportRows(SESS_ID, RES_ID);
+    expect(row.p1StoryShownAt).toBeNull();
+    expect(row.p1NextStoryAvailableAt).toBeNull();
+  });
+
+  it('cada tentativa usa os próprios timestamps', async () => {
+    const later = (d: Date, s: number) => new Date(d.getTime() + s * 1000);
+    setup([mockP1, mockP2], [
+      makeAttempt({ id: 'att-001', globalNumber: 1, responses: [
+        makeResponse(mockP1.id, { storyShownAt: P1_STORY, nextStoryAvailableAt: P1_NEXT }),
+        makeResponse(mockP2.id, { storyShownAt: P2_STORY, nextStoryAvailableAt: P2_NEXT }),
+      ] }),
+      makeAttempt({ id: 'att-002', globalNumber: 2, responses: [
+        makeResponse(mockP2.id, { storyShownAt: later(P2_STORY, 60), nextStoryAvailableAt: null }),
+        makeResponse(mockP1.id, { storyShownAt: later(P1_STORY, 60), nextStoryAvailableAt: null }),
+      ] }),
+    ]);
+    const [r1, r2] = await buildExportRows(SESS_ID, RES_ID);
+    expect(r1.p1StoryShownAt).toEqual(P1_STORY);
+    expect(r1.p2NextStoryAvailableAt).toEqual(P2_NEXT);
+    expect(r2.p1StoryShownAt).toEqual(later(P1_STORY, 60));
+    expect(r2.p2StoryShownAt).toEqual(later(P2_STORY, 60));
+    expect(r2.p1NextStoryAvailableAt).toBeNull();
+    expect(r2.p2NextStoryAvailableAt).toBeNull();
+  });
+
+  it('select de responses pede os dois campos novos e nenhum campo sensível', async () => {
+    setup([mockP1, mockP2], [makeAttempt()]);
+    await buildExportRows(SESS_ID, RES_ID);
+    const call = vi.mocked(prisma.attempt.findMany).mock.calls[0][0] as {
+      select: { responses: { select: Record<string, unknown> } };
+    };
+    expect(Object.keys(call.select.responses.select).sort()).toEqual([
+      'judgment', 'judgmentAt', 'nextStoryAvailableAt', 'punishment', 'punishmentAt',
+      'resultAcknowledgedAt', 'sessionParticipantId', 'storyShownAt',
+    ]);
   });
 });
 

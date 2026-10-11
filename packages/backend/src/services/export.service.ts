@@ -85,10 +85,12 @@ export async function buildExportRows(
       responses: {
         select: {
           sessionParticipantId: true,
+          storyShownAt:         true,
           judgment:             true,
           judgmentAt:           true,
           punishment:           true,
           punishmentAt:         true,
+          nextStoryAvailableAt: true,
           resultAcknowledgedAt: true,
         },
       },
@@ -125,8 +127,10 @@ export async function buildExportRows(
 
   type ResponseRow = {
     sessionParticipantId: string;
+    storyShownAt: Date | null;
     judgment: string | null; judgmentAt: Date | null;
     punishment: string | null; punishmentAt: Date | null;
+    nextStoryAvailableAt: Date | null;
     resultAcknowledgedAt: Date | null;
   };
   type AttemptRow = {
@@ -174,17 +178,21 @@ export async function buildExportRows(
       receptorDistribution:    attempt.receptorDistribution,
 
       // Respostas P1
+      p1StoryShownAt:         r1?.storyShownAt ?? null,
       p1Judgment:             (r1?.judgment ?? null) as JudgmentResponse | null,
       p1JudgmentAt:           r1?.judgmentAt ?? null,
       p1Punishment:           (r1?.punishment ?? null) as PunishmentDecision | null,
       p1PunishmentAt:         r1?.punishmentAt ?? null,
+      p1NextStoryAvailableAt: r1?.nextStoryAvailableAt ?? null,
       p1ResultAcknowledgedAt: r1?.resultAcknowledgedAt ?? null,
 
       // Respostas P2
+      p2StoryShownAt:         r2?.storyShownAt ?? null,
       p2Judgment:             (r2?.judgment ?? null) as JudgmentResponse | null,
       p2JudgmentAt:           r2?.judgmentAt ?? null,
       p2Punishment:           (r2?.punishment ?? null) as PunishmentDecision | null,
       p2PunishmentAt:         r2?.punishmentAt ?? null,
+      p2NextStoryAvailableAt: r2?.nextStoryAvailableAt ?? null,
       p2ResultAcknowledgedAt: r2?.resultAcknowledgedAt ?? null,
 
       // Resultado (null se TrialRecord ausente)
