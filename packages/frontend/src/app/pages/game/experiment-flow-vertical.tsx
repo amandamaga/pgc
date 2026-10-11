@@ -622,7 +622,9 @@ function FullScreenNotice({ title, message, action }: {
 export function ExperimentFlowVertical({ token }: { token: string }) {
   const {
     state, error, isLoading, isSubmitting,
+    storyShownStatus, nextStoryAvailableStatus,
     refresh, submitJudgment, submitPunishment, acknowledgeResult,
+    markStoryShown, markNextStoryAvailable,
   } = useParticipantState(token);
 
   const [lang, setLangState] = useState<Lang>(() => getLang(undefined));
@@ -660,6 +662,10 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     && partner.secondsSinceSeen > PARTNER_DISCONNECT_THRESHOLD_SECONDS;
 
   const [prelude, setPrelude] = useState<Prelude>("intro");
+  // Tentativa a que o prelúdio atual pertence. No primeiro render de uma
+  // história nova o `prelude` ainda é o da anterior (o reset vem no efeito
+  // abaixo); sem esta marca, um "ready" velho dispararia o story-shown cedo.
+  const [preludeAttemptId, setPreludeAttemptId] = useState<string | null>(null);
   const [coinLostFlash, setCoinLostFlash] = useState(false);
   // Marca que a crianca escolheu punir, para o "voce perdeu" sair no clique e nao
   // so quando o servidor devolve o resultado da dupla.
@@ -671,6 +677,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   useEffect(() => {
     if (!attemptId) return;
     setPrelude(own?.judgment ? "ready" : "intro");
+    setPreludeAttemptId(attemptId);
     setShowLossFeedback(false);
     setJustPunished(false);
   }, [attemptId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -719,12 +726,44 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   // e quando so o parceiro punia a perda dele nunca aparecia para mim.
   const anyoneLostCoins = lossLineCount > 0;
 
+  // Tentativa cujo aviso de perda já terminou. `showLossFeedback` sozinho não
+  // basta: ele começa false antes do efeito abaixo ligá-lo, e esse false inicial
+  // não pode ser confundido com "o aviso já acabou".
+  const [lossFeedbackDoneFor, setLossFeedbackDoneFor] = useState<string | null>(null);
+
   useEffect(() => {
     if (stage !== "RESULT" || !anyoneLostCoins) return;
     setShowLossFeedback(true);
-    const t = setTimeout(() => setShowLossFeedback(false), LOSS_READ_BASE_MS + LOSS_READ_PER_LINE_MS * lossLineCount);
+    const t = setTimeout(() => {
+      setShowLossFeedback(false);
+      setLossFeedbackDoneFor(attemptId);
+    }, LOSS_READ_BASE_MS + LOSS_READ_PER_LINE_MS * lossLineCount);
     return () => clearTimeout(t);
-  }, [stage, anyoneLostCoins, lossLineCount]);
+  }, [stage, anyoneLostCoins, lossLineCount, attemptId]);
+
+  // Todos os avisos obrigatórios do resultado terminaram: ou não houve perda
+  // individual, ou o aviso de perda desta tentativa já saiu da tela. É o ponto
+  // em que "Ver a próxima história" passa a existir (com ou sem ganho da dupla).
+  const resultFeedbackDone = stage === "RESULT" && !!attemptId
+    && (!anyoneLostCoins || lossFeedbackDoneFor === attemptId);
+
+  // storyShownAt: a história completa (divisão final) está na tela e a criança
+  // já pode julgá-la. Não vale no "Ver história" nem durante a animação; e se
+  // ela já julgou (voltou depois de um refresh), não se cria registro tardio.
+  const storyReadyToJudge = stage === "JUDGMENT" && !!attemptId
+    && preludeAttemptId === attemptId && prelude === "ready" && !own?.judgment;
+  useEffect(() => {
+    if (storyReadyToJudge && storyShownStatus === "idle") void markStoryShown();
+  }, [storyReadyToJudge, storyShownStatus, markStoryShown]);
+
+  // nextStoryAvailableAt: o avanço acabou de ficar disponível para esta criança.
+  useEffect(() => {
+    if (resultFeedbackDone && nextStoryAvailableStatus === "idle") void markNextStoryAvailable();
+  }, [resultFeedbackDone, nextStoryAvailableStatus, markNextStoryAvailable]);
+
+  // Os botões só respondem depois que o servidor confirmou o respectivo marco.
+  const judgmentBlocked = !own?.judgment && storyShownStatus !== "done";
+  const advanceBlocked = nextStoryAvailableStatus !== "done";
 
   // ── Estados que ocupam a tela inteira ──────────────────────────────────────
   if (error) {
@@ -913,7 +952,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   partnerChoice={partner?.judgment ?? null}
                   onChoose={(v) => void submitJudgment(v as "Just" | "Unjust")}
                   partnerName={partnerName}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || judgmentBlocked}
                   topButton={
                     !judged ? (
                       <div className="flex justify-center">
@@ -971,7 +1010,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                 </motion.div>
               )}
 
-              {stage === "RESULT" && !earnedCoins && !showLossFeedback && (
+              {stage === "RESULT" && !earnedCoins && resultFeedbackDone && (
                 <motion.div
                   key="result-plain"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -982,12 +1021,12 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   </p>
                   <button
                     onClick={() => void acknowledgeResult()}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || advanceBlocked}
                     className="font-nunito font-black rounded-2xl px-5 py-2.5"
                     style={{
                       backgroundColor: "#FFD900", color: "#7A5800",
                       border: "2px solid #CE9200", borderBottom: "4px solid #CE9200", fontSize: 13,
-                      opacity: isSubmitting ? 0.6 : 1,
+                      opacity: isSubmitting || advanceBlocked ? 0.6 : 1,
                     }}
                   >
                     Ver a próxima história
@@ -1037,12 +1076,12 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
 
       {/* Ganho da dupla */}
       <AnimatePresence>
-        {stage === "RESULT" && earnedCoins && !showLossFeedback && (
+        {stage === "RESULT" && earnedCoins && resultFeedbackDone && (
           <GroupRewardModal
             amount={result?.culturalConsequence ?? 0}
             piggyBank={balances.groupCoins}
             onContinue={() => void acknowledgeResult()}
-            disabled={isSubmitting}
+            disabled={isSubmitting || advanceBlocked}
           />
         )}
       </AnimatePresence>

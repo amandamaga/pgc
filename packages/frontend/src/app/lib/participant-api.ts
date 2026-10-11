@@ -124,6 +124,10 @@ export function createParticipantClient(token: string) {
     postJudgment: (id: string, judgment: "Just" | "Unjust", signal?: AbortSignal) => request(attemptPath(id) + "/judgment", signal, { judgment }),
     postPunishment: (id: string, punishment: "Punish" | "NoPunish", signal?: AbortSignal) => request(attemptPath(id) + "/punishment", signal, { punishment }),
     postAcknowledge: (id: string, signal?: AbortSignal) => request(attemptPath(id) + "/result/acknowledge", signal, {}),
+    // Marcos de tempo da tentativa. O corpo vai vazio de propósito: o horário é
+    // sempre o do servidor, o cliente não envia nenhum dado científico.
+    postStoryShown: (id: string, signal?: AbortSignal) => request(attemptPath(id) + "/story-shown", signal, {}),
+    postNextStoryAvailable: (id: string, signal?: AbortSignal) => request(attemptPath(id) + "/next-story-available", signal, {}),
   };
 }
 export const WAITING_STAGES: Stage[] = ["WAITING_SESSION", "WAITING_JUDGMENT_PARTNER", "WAITING_PUNISHMENT_PARTNER", "WAITING_RESULT_PARTNER"];
