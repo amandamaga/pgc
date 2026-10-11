@@ -705,9 +705,6 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   }, [stage, earnedCoins, playCulturantSound]);
 
   // O aviso de perda aparece assim que o resultado chega e sai sozinho.
-  const punishmentApplied = result?.punishmentApplied ?? false;
-  const anyoneLostCoins = punishmentApplied || (result?.ownIndividualCost ?? 0) > 0;
-
   // So as perdas da dupla. A perda do personagem distribuidor ja aparece no balao
   // sobre o retrato dele (distributorBubble), e repetir aqui embaixo misturava o
   // que aconteceu com a historia e o que aconteceu com as duas criancas.
@@ -717,6 +714,10 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     if (partner?.punishment === "Punish") lossMessages.push(`${partnerName} perdeu ${moedas(1)}`);
   }
   const lossLineCount = lossMessages.length;
+  // O aviso depende das proprias mensagens: qualquer perda individual da dupla
+  // (minha ou do parceiro) conta. Antes dependia de punishmentApplied/meu custo,
+  // e quando so o parceiro punia a perda dele nunca aparecia para mim.
+  const anyoneLostCoins = lossLineCount > 0;
 
   useEffect(() => {
     if (stage !== "RESULT" || !anyoneLostCoins) return;

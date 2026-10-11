@@ -9,6 +9,53 @@ const server = await preview({ root: fileURLToPath(new URL('..', import.meta.url
 let browser;
 try {
   browser = await chromium.launch({ channel: 'msedge', headless: true });
+
+  // F1.2: aviso de perda individual da dupla na tela de RESULT, do ponto de vista
+  // de quem joga (eu) contra o parceiro João. O caso 3 é o bug corrigido: só o
+  // parceiro pune e a perda dele precisa aparecer para mim.
+  async function checkLossFeedback(label, ownPunish, partnerPunish, expected, absent) {
+    const bothPunish = ownPunish === 'Punish' && partnerPunish === 'Punish';
+    const snap = {
+      participant: {id:'P1', slot:'P1', displayName:'Maria', participantCode:'P1'},
+      session: {id:'fixture', name:'Fixture', status:'IN_PROGRESS'},
+      stage: 'RESULT',
+      currentAttempt: { id:'attempt-loss', endowment:12, distributorDistribution:8, receptorDistribution:4, distributorCharacter:'Ana', receptorCharacter:'Bia', punishmentLoss:4 },
+      trialResult: {
+        ownIndividualCost: ownPunish === 'Punish' ? 1 : 0,
+        ownCoinsAfter: ownPunish === 'Punish' ? 79 : 80,
+        punishmentApplied: bothPunish,
+        distributorResult: bothPunish ? {character:'Ana', finalCoins:4, coinsLost:4} : null,
+        culturalConsequence: 0,
+        groupCoinsAfter: 0,
+      },
+      partner: { slot:'P2', displayName:'João', judgment:'Unjust', punishment:partnerPunish, hasAck:false, coinsAfter: partnerPunish === 'Punish' ? 79 : 80, secondsSinceSeen:1 },
+      own: { judgment:'Unjust', punishment:ownPunish, hasAck:false },
+      balances: { ownCoins: ownPunish === 'Punish' ? 79 : 80, partnerCoins: partnerPunish === 'Punish' ? 79 : 80, groupCoins:0 },
+    };
+    const context = await browser.newContext({viewport:{width:768,height:1024}});
+    await context.addInitScript(() => sessionStorage.setItem('intro-done:fixture-loss', '1'));
+    await context.route('**/participant/**', route => route.fulfill({json:snap}));
+    const page = await context.newPage();
+    await page.goto('http://127.0.0.1:4187/participant#token=fixture-loss');
+    // Sem perda, o botão de seguir aparece direto; com perda, ele só vem depois do aviso.
+    const next = page.getByRole('button',{name:'Ver a próxima história',exact:true});
+    if (expected.length === 0) await expect(next).toBeVisible();
+    else await expect(next).toHaveCount(0);
+    for (const text of expected) await expect(page.getByText(text,{exact:true})).toBeVisible();
+    for (const text of absent) await expect(page.getByText(text,{exact:true})).toHaveCount(0);
+    if (bothPunish) {
+      // A perda do distribuidor segue no balão do distributorResult, não na lista da dupla.
+      await expect(page.getByText('Ana perdeu 4 moedas',{exact:true})).toHaveCount(1);
+    } else {
+      await expect(page.getByText('Ana perdeu',{exact:false})).toHaveCount(0);
+    }
+    console.log(`PASS F1.2 ${label}`);
+    await context.close();
+  }
+  await checkLossFeedback('caso 1: NoPunish + NoPunish → sem aviso', 'NoPunish', 'NoPunish', [], ['Você perdeu 1 moeda', 'João perdeu 1 moeda']);
+  await checkLossFeedback('caso 2: Punish + NoPunish → só eu', 'Punish', 'NoPunish', ['Você perdeu 1 moeda'], ['João perdeu 1 moeda']);
+  await checkLossFeedback('caso 3: NoPunish + Punish → só o parceiro', 'NoPunish', 'Punish', ['João perdeu 1 moeda'], ['Você perdeu 1 moeda']);
+  await checkLossFeedback('caso 4: Punish + Punish → as duas', 'Punish', 'Punish', ['Você perdeu 1 moeda', 'João perdeu 1 moeda'], []);
   const stages = { P1: 'WAITING_SESSION', P2: 'WAITING_SESSION' };
   const posts = [];
   let failure = 0;
