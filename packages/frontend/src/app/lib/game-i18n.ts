@@ -33,7 +33,8 @@ export const translations = {
     justiceQuestion: "Você acha que essa divisão foi justa ou injusta?",
     just: "Justa",
     unjust: "Injusta",
-    punishQuestion: (name: string) => `Você daria 1 das suas moedas para que ${name} perca 3 moedas?`,
+    punishQuestion: (name: string, loss: number) =>
+      `Você daria 1 das suas moedas para que ${name} perca ${loss === 1 ? "1 moeda" : `${loss} moedas`}?`,
     yes: "Sim",
     no: "Não",
     continue: "Continuar",
@@ -101,7 +102,8 @@ export const translations = {
     justiceQuestion: "Synes du denne fordelingen var rettferdig eller urettferdig?",
     just: "Rettferdig",
     unjust: "Urettferdig",
-    punishQuestion: (name: string) => `Vil du gi 1 mynt slik at ${name} mister 3 mynter?`,
+    punishQuestion: (name: string, loss: number) =>
+      `Vil du gi 1 mynt slik at ${name} mister ${loss === 1 ? "1 mynt" : `${loss} mynter`}?`,
     yes: "Ja",
     no: "Nei",
     continue: "Fortsett",

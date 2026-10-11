@@ -941,7 +941,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   className="flex flex-col gap-2"
                 >
                   <DecisionCard
-                    question={T.punishQuestion(nameA)}
+                    question={T.punishQuestion(nameA, attempt.punishmentLoss)}
                     buttons={[
                       { value: "Punish",   label: "SIM", bg: "#58CC02", border: "#46A302" },
                       { value: "NoPunish", label: "NÃO", bg: "#FF4B4B", border: "#CC3939" },

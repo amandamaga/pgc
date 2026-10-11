@@ -8,7 +8,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 vi.mock('../../src/config/prisma', () => ({
   prisma: {
-    sessionParticipant: { findUnique: vi.fn(), update: vi.fn() },
+    sessionParticipant: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     attempt: { findFirst: vi.fn() },
   },
 }));
@@ -100,6 +100,8 @@ function partnerResponse(
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(prisma.sessionParticipant.update).mockResolvedValue(undefined as never);
+  // Parceiro da dupla: ausente por padrão (os testes daqui não dependem dele).
+  vi.mocked(prisma.sessionParticipant.findFirst).mockResolvedValue(null as never);
 });
 
 // ---------------------------------------------------------------------------
@@ -503,6 +505,7 @@ describe('não expõe campos proibidos', () => {
       'distributorDistribution',
       'endowment',
       'id',
+      'punishmentLoss',
       'receptorCharacter',
       'receptorDistribution',
     ]);
@@ -529,5 +532,48 @@ describe('não expõe campos proibidos', () => {
       'ownIndividualCost',
       'punishmentApplied',
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// punishmentLoss — perda real do distribuidor mostrada na pergunta de punição
+// ---------------------------------------------------------------------------
+
+describe('currentAttempt.punishmentLoss', () => {
+  it.each([
+    { distributorDistribution: 12, receptorDistribution: 4, expected: 8 },
+    { distributorDistribution: 24, receptorDistribution: 8, expected: 16 },
+    { distributorDistribution: 6,  receptorDistribution: 6, expected: 3 },
+  ])(
+    '$distributorDistribution/$receptorDistribution → $expected',
+    async ({ distributorDistribution, receptorDistribution, expected }) => {
+      vi.mocked(prisma.sessionParticipant.findUnique).mockResolvedValue(mockSpBase as never);
+      vi.mocked(prisma.attempt.findFirst).mockResolvedValue({
+        ...mockAttemptBase,
+        endowment: distributorDistribution + receptorDistribution,
+        distributorDistribution,
+        receptorDistribution,
+        responses: [],
+      } as never);
+
+      const result = await getParticipantState('tok-abc');
+
+      expect(result.currentAttempt?.punishmentLoss).toBe(expected);
+    },
+  );
+
+  it('é o mesmo valor que resolveTrial grava em distributorLost', async () => {
+    vi.mocked(prisma.sessionParticipant.findUnique).mockResolvedValue(mockSpBase as never);
+    vi.mocked(prisma.attempt.findFirst).mockResolvedValue({
+      ...mockAttemptBase,
+      completedAt: new Date(),
+      trialRecord: mockTrialRecord,
+      responses: [ownResponse('Just', 'Punish'), partnerResponse('Just', 'Punish')],
+    } as never);
+
+    const result = await getParticipantState('tok-abc');
+
+    expect(result.currentAttempt?.punishmentLoss).toBe(mockTrialRecord.distributorLost);
+    expect(result.trialResult?.distributorResult?.coinsLost).toBe(mockTrialRecord.distributorLost);
   });
 });

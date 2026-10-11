@@ -12,7 +12,7 @@ try {
   const stages = { P1: 'WAITING_SESSION', P2: 'WAITING_SESSION' };
   const posts = [];
   let failure = 0;
-  const attempt = { id: 'attempt-one', endowment: 12, distributorDistribution: 8, receptorDistribution: 4, distributorCharacter: 'Ana', receptorCharacter: 'Bia' };
+  const attempt = { id: 'attempt-one', endowment: 12, distributorDistribution: 8, receptorDistribution: 4, distributorCharacter: 'Ana', receptorCharacter: 'Bia', punishmentLoss: 4 };
   const result = { ownIndividualCost: 2, ownCoinsAfter: 73, punishmentApplied: true, distributorResult: {character:'Ana', finalCoins: 3, coinsLost: 5}, culturalConsequence: 7, groupCoinsAfter: 19 };
   function snapshot(slot) {
     return {participant: {id:slot, slot, displayName:slot, participantCode:slot}, session: {id:'fixture',name:'Fixture',status:'IN_PROGRESS'},stage:stages[slot],currentAttempt:['WAITING_SESSION','COMPLETED'].includes(stages[slot])?null:attempt,trialResult:['RESULT','WAITING_RESULT_PARTNER'].includes(stages[slot])?result:null};
@@ -54,6 +54,9 @@ try {
   await expect(p1.getByText('Resposta enviada!',{exact:false})).toBeVisible();
   await p2.getByRole('button',{name:'Injusta',exact:true}).click();
   await expect(p1.getByRole('button',{name:'Sim',exact:true})).toBeVisible();
+  // F1.1: a pergunta usa a perda real da tentativa (8/4 → 4), não um 3 fixo.
+  await expect(p1.getByText('Você daria 1 das suas moedas para que Ana perca 4 moedas?')).toBeVisible();
+  await expect(p1.getByText('perca 3 moedas',{exact:false})).toHaveCount(0);
   await p1.getByRole('button',{name:'Sim',exact:true}).click();
   await expect(p1.getByText('Resposta enviada!',{exact:false})).toBeVisible();
   await p2.getByRole('button',{name:'Não',exact:true}).click();

@@ -15,6 +15,8 @@ export interface CurrentAttempt {
   receptorDistribution: number;
   distributorCharacter: string;
   receptorCharacter: string;
+  /** Moedas que o distribuidor perde se a dupla punir nesta tentativa (calculado no backend). */
+  punishmentLoss: number;
 }
 
 export interface DistributorResult {

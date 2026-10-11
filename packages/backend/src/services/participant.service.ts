@@ -8,6 +8,11 @@
 
 import { prisma } from '../config/prisma';
 import { INITIAL_COINS } from '../domain/experiment.types';
+import {
+  calculateDistributorFinal,
+  calculateDistributorLost,
+  classifyDistribution,
+} from '../domain/experiment.rules';
 import { SessionBootstrapError } from './session.drafts';
 import { deriveStage } from './participant.stage';
 import type { ParticipantStage, OwnResponse, PartnerStatus } from './participant.stage';
@@ -22,7 +27,28 @@ export type CurrentAttemptView = {
   receptorDistribution: number;
   distributorCharacter: string;
   receptorCharacter: string;
+  /**
+   * Quantas moedas o distribuidor perde se a dupla punir nesta tentativa.
+   * Valor potencial, mostrado na pergunta de punição — calculado com as
+   * mesmas regras de experiment.rules.ts usadas por resolveTrial().
+   */
+  punishmentLoss: number;
 };
+
+/**
+ * Perda potencial do distribuidor nesta tentativa, sem duplicar a fórmula:
+ * compõe classifyDistribution → calculateDistributorFinal →
+ * calculateDistributorLost, na mesma ordem de resolveTrial().
+ */
+function computePunishmentLoss(distributorDistribution: number, receptorDistribution: number): number {
+  const distributionType = classifyDistribution(distributorDistribution, receptorDistribution);
+  const distributorFinal = calculateDistributorFinal(
+    distributionType,
+    distributorDistribution,
+    receptorDistribution,
+  );
+  return calculateDistributorLost(distributorDistribution, distributorFinal);
+}
 
 /** Dados do resultado observável — apenas consequências visíveis */
 export type TrialResultView = {
@@ -266,6 +292,10 @@ export async function getParticipantState(accessToken: string): Promise<Particip
       receptorDistribution:    attempt.receptorDistribution,
       distributorCharacter:    attempt.distributorCharacter,
       receptorCharacter:       attempt.receptorCharacter,
+      punishmentLoss:          computePunishmentLoss(
+        attempt.distributorDistribution,
+        attempt.receptorDistribution,
+      ),
     };
 
     // Resposta do próprio participante
