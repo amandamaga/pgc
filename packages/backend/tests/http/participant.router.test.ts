@@ -7,6 +7,7 @@ vi.mock('../../src/services/participant.service', () => ({
 }));
 vi.mock('../../src/services/response.service', () => ({
   submitJudgment: vi.fn(), submitPunishment: vi.fn(), submitAcknowledge: vi.fn(),
+  markStoryShown: vi.fn(), markNextStoryAvailable: vi.fn(),
 }));
 vi.mock('../../src/services/session.service', () => ({
   createSession: vi.fn(), addParticipant: vi.fn(), startSession: vi.fn(), getSession: vi.fn(),
@@ -386,5 +387,150 @@ describe('POST /participant/attempts/:id/result/acknowledge', () => {
     expect(res.body.currentAttempt?.condition).toBeUndefined();
     expect(res.body.currentAttempt?.blockNumber).toBeUndefined();
     expect(res.body.currentAttempt?.globalNumber).toBeUndefined();
+  });
+});
+
+// ===========================================================================
+// POST /participant/attempts/:attemptId/story-shown
+// ===========================================================================
+
+describe('POST /participant/attempts/:id/story-shown', () => {
+  const URL = '/participant/attempts/att-001/story-shown';
+
+  it('200 com token válido, sem body; repassa token e attemptId', async () => {
+    vi.mocked(responseService.markStoryShown).mockResolvedValue(mockState as never);
+    const res = await request(app).post(URL).set('Authorization', BEARER).send();
+    expect(res.status).toBe(200);
+    expect(res.body.stage).toBe('JUDGMENT');
+    expect(responseService.markStoryShown).toHaveBeenCalledWith('valid-token', 'att-001');
+  });
+
+  it('ignora qualquer body enviado (o horário é sempre do servidor)', async () => {
+    vi.mocked(responseService.markStoryShown).mockResolvedValue(mockState as never);
+    const res = await request(app).post(URL).set('Authorization', BEARER)
+      .send({ storyShownAt: '2000-01-01T00:00:00Z' });
+    expect(res.status).toBe(200);
+    expect(responseService.markStoryShown).toHaveBeenCalledWith('valid-token', 'att-001');
+  });
+
+  it('401 sem token', async () => {
+    const res = await request(app).post(URL).send();
+    expect(res.status).toBe(401);
+    expect(responseService.markStoryShown).not.toHaveBeenCalled();
+  });
+
+  it('401 com header malformado (sem Bearer)', async () => {
+    const res = await request(app).post(URL).set('Authorization', 'valid-token').send();
+    expect(res.status).toBe(401);
+    expect(responseService.markStoryShown).not.toHaveBeenCalled();
+  });
+
+  it('401 com token inválido', async () => {
+    vi.mocked(responseService.markStoryShown).mockRejectedValue(
+      new SessionBootstrapError('Token inválido ou participante não encontrado.')
+    );
+    const res = await request(app).post(URL).set('Authorization', BEARER).send();
+    expect(res.status).toBe(401);
+  });
+
+  it('404 attempt não encontrado', async () => {
+    vi.mocked(responseService.markStoryShown).mockRejectedValue(
+      new SessionBootstrapError('Attempt não encontrado: att-999')
+    );
+    const res = await request(app).post('/participant/attempts/att-999/story-shown')
+      .set('Authorization', BEARER).send();
+    expect(res.status).toBe(404);
+  });
+
+  it('409 attempt já finalizado', async () => {
+    vi.mocked(responseService.markStoryShown).mockRejectedValue(
+      new SessionBootstrapError('Attempt att-001 já foi finalizado.')
+    );
+    const res = await request(app).post(URL).set('Authorization', BEARER).send();
+    expect(res.status).toBe(409);
+  });
+
+  it('409 attempt fora de ordem', async () => {
+    vi.mocked(responseService.markStoryShown).mockRejectedValue(
+      new SessionBootstrapError('Attempt att-002 não é o próximo a ser respondido.')
+    );
+    const res = await request(app).post('/participant/attempts/att-002/story-shown')
+      .set('Authorization', BEARER).send();
+    expect(res.status).toBe(409);
+  });
+
+  it('500 para erro inesperado', async () => {
+    vi.mocked(responseService.markStoryShown).mockRejectedValue(new Error('DB'));
+    const res = await request(app).post(URL).set('Authorization', BEARER).send();
+    expect(res.status).toBe(500);
+  });
+});
+
+// ===========================================================================
+// POST /participant/attempts/:attemptId/next-story-available
+// ===========================================================================
+
+describe('POST /participant/attempts/:id/next-story-available', () => {
+  const URL = '/participant/attempts/att-001/next-story-available';
+
+  it('200 com token válido, sem body; repassa token e attemptId', async () => {
+    vi.mocked(responseService.markNextStoryAvailable).mockResolvedValue(
+      { ...mockState, stage: 'RESULT' } as never
+    );
+    const res = await request(app).post(URL).set('Authorization', BEARER).send();
+    expect(res.status).toBe(200);
+    expect(res.body.stage).toBe('RESULT');
+    expect(responseService.markNextStoryAvailable).toHaveBeenCalledWith('valid-token', 'att-001');
+  });
+
+  it('não aciona o ack do resultado', async () => {
+    vi.mocked(responseService.markNextStoryAvailable).mockResolvedValue(mockState as never);
+    await request(app).post(URL).set('Authorization', BEARER).send();
+    expect(responseService.submitAcknowledge).not.toHaveBeenCalled();
+  });
+
+  it('401 sem token', async () => {
+    const res = await request(app).post(URL).send();
+    expect(res.status).toBe(401);
+    expect(responseService.markNextStoryAvailable).not.toHaveBeenCalled();
+  });
+
+  it('401 com token inválido', async () => {
+    vi.mocked(responseService.markNextStoryAvailable).mockRejectedValue(
+      new SessionBootstrapError('Token inválido ou participante não encontrado.')
+    );
+    const res = await request(app).post(URL).set('Authorization', BEARER).send();
+    expect(res.status).toBe(401);
+  });
+
+  it('409 attempt ainda não finalizado', async () => {
+    vi.mocked(responseService.markNextStoryAvailable).mockRejectedValue(
+      new SessionBootstrapError('Attempt att-001 ainda não foi finalizado.')
+    );
+    const res = await request(app).post(URL).set('Authorization', BEARER).send();
+    expect(res.status).toBe(409);
+  });
+
+  it('404 sem Response do participante', async () => {
+    vi.mocked(responseService.markNextStoryAvailable).mockRejectedValue(
+      new SessionBootstrapError('Resposta do participante não encontrada para o Attempt att-001.')
+    );
+    const res = await request(app).post(URL).set('Authorization', BEARER).send();
+    expect(res.status).toBe(404);
+  });
+
+  it('404 attempt não encontrado', async () => {
+    vi.mocked(responseService.markNextStoryAvailable).mockRejectedValue(
+      new SessionBootstrapError('Attempt não encontrado: att-999')
+    );
+    const res = await request(app).post('/participant/attempts/att-999/next-story-available')
+      .set('Authorization', BEARER).send();
+    expect(res.status).toBe(404);
+  });
+
+  it('500 para erro inesperado', async () => {
+    vi.mocked(responseService.markNextStoryAvailable).mockRejectedValue(new Error('DB'));
+    const res = await request(app).post(URL).set('Authorization', BEARER).send();
+    expect(res.status).toBe(500);
   });
 });

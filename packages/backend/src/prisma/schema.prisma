@@ -291,6 +291,13 @@ model Response {
   // Etapa 3 — confirmação de visualização do resultado
   resultAcknowledgedAt DateTime? @map("result_acknowledged_at")
 
+  // Marcos de tempo da tentativa para esta criança (horário do servidor, first-write).
+  // storyShownAt: quando a história completa ficou visível e ela pôde avaliá-la.
+  storyShownAt         DateTime? @map("story_shown_at")
+  // nextStoryAvailableAt: quando o avanço para a próxima história ficou disponível.
+  // Não confundir com resultAcknowledgedAt, que é quando ela de fato avançou.
+  nextStoryAvailableAt DateTime? @map("next_story_available_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

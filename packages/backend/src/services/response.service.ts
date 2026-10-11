@@ -6,8 +6,13 @@
  * e aciona finalizeAttempt quando ambos concluem punishment.
  * acknowledgeResult delega para trial.service.acknowledgeResult.
  * Session.update é responsabilidade exclusiva de trial.service.acknowledgeResult.
+ *
+ * markStoryShown e markNextStoryAvailable registram marcos de tempo por
+ * participante e por tentativa, sempre com o relógio do servidor e em regime
+ * first-write: um valor já gravado nunca é substituído (retry é inofensivo).
  */
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { SessionBootstrapError } from './session.drafts';
 import {
@@ -232,5 +237,154 @@ export async function submitAcknowledge(
   }
 
   await acknowledgeResult(attemptId, sp.id);
+  return getParticipantState(accessToken);
+}
+
+// ---------------------------------------------------------------------------
+// markStoryShown — POST /participant/attempts/:attemptId/story-shown
+// ---------------------------------------------------------------------------
+
+/** Violação de unicidade do Prisma (corrida entre dois creates da mesma Response). */
+function isUniqueViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+}
+
+/**
+ * Grava storyShownAt desta criança nesta tentativa, se ainda não houver valor.
+ *
+ * - Cria a Response quando ela ainda não existe (o evento vem antes do julgamento).
+ * - A gravação é condicional (`storyShownAt: null`), então um retry ou uma
+ *   requisição concorrente nunca sobrescreve o primeiro valor.
+ * - Na mesma transação, quando ESTA chamada gravou o storyShownAt, preenche
+ *   Attempt.startedAt se ele ainda for null. A condição `startedAt: null` faz
+ *   com que a apresentação do segundo participante não sobrescreva o valor.
+ *
+ * Retorna true se esta chamada gravou o timestamp.
+ */
+async function writeStoryShownOnce(
+  sessionId: string,
+  attemptId: string,
+  sessionParticipantId: string,
+): Promise<boolean> {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const now = new Date();
+
+    const updated = await tx.response.updateMany({
+      where: { attemptId, sessionParticipantId, storyShownAt: null },
+      data:  { storyShownAt: now },
+    });
+    let wrote = updated.count > 0;
+
+    if (!wrote) {
+      const existing = await tx.response.findUnique({
+        where:  { attemptId_sessionParticipantId: { attemptId, sessionParticipantId } },
+        select: { id: true },
+      });
+      if (!existing) {
+        await tx.response.create({
+          data: { sessionId, attemptId, sessionParticipantId, storyShownAt: now },
+        });
+        wrote = true;
+      }
+    }
+
+    if (wrote) {
+      await tx.attempt.updateMany({
+        where: { id: attemptId, startedAt: null },
+        data:  { startedAt: now },
+      });
+    }
+
+    return wrote;
+  });
+}
+
+export async function markStoryShown(
+  accessToken: string,
+  attemptId: string,
+) {
+  const { sp, attempt } = await resolveActive(accessToken, attemptId);
+
+  // Tentativa já finalizada: retry depois do fim é idempotente se já houve
+  // registro; sem registro, não faz sentido apresentar a história agora.
+  if (attempt.completedAt) {
+    const existing = await prisma.response.findUnique({
+      where:  { attemptId_sessionParticipantId: { attemptId, sessionParticipantId: sp.id } },
+      select: { storyShownAt: true },
+    });
+    if (existing?.storyShownAt) return getParticipantState(accessToken);
+    throw new SessionBootstrapError(`Attempt ${attemptId} já foi finalizado.`);
+  }
+
+  if (sp.session.status !== 'IN_PROGRESS') {
+    throw new SessionBootstrapError(`Session não está IN_PROGRESS (status: ${sp.session.status}).`);
+  }
+
+  // Mesma ordem dos demais endpoints: só a próxima tentativa pendente,
+  // e só depois que os dois confirmaram o resultado da anterior.
+  const firstPending = await prisma.attempt.findFirst({
+    where: { sessionId: sp.sessionId, completedAt: null },
+    orderBy: { globalNumber: 'asc' },
+    select: { id: true },
+  });
+  if (!firstPending || firstPending.id !== attemptId) {
+    throw new SessionBootstrapError(`Attempt ${attemptId} não é o próximo a ser respondido.`);
+  }
+
+  if (await hasPendingResult(sp.sessionId)) {
+    throw new SessionBootstrapError(
+      'Aguardando confirmação do resultado da tentativa anterior antes de avançar.'
+    );
+  }
+
+  try {
+    await writeStoryShownOnce(sp.sessionId, attemptId, sp.id);
+  } catch (err) {
+    // Duas requisições da mesma criança tentaram criar a Response ao mesmo
+    // tempo: a outra venceu. Repetir uma vez cai no caminho condicional.
+    if (!isUniqueViolation(err)) throw err;
+    await writeStoryShownOnce(sp.sessionId, attemptId, sp.id);
+  }
+
+  return getParticipantState(accessToken);
+}
+
+// ---------------------------------------------------------------------------
+// markNextStoryAvailable — POST /participant/attempts/:attemptId/next-story-available
+// ---------------------------------------------------------------------------
+
+/**
+ * Grava nextStoryAvailableAt desta criança: quando o avanço para a próxima
+ * história ficou disponível para ela. Não mexe em resultAcknowledgedAt, que
+ * continua sendo o momento em que ela efetivamente avançou.
+ *
+ * Só vale para tentativa finalizada e exige a Response do participante.
+ * First-write: a gravação é condicional (`nextStoryAvailableAt: null`).
+ */
+export async function markNextStoryAvailable(
+  accessToken: string,
+  attemptId: string,
+) {
+  const { sp, attempt } = await resolveActive(accessToken, attemptId);
+
+  if (!attempt.completedAt) {
+    throw new SessionBootstrapError(`Attempt ${attemptId} ainda não foi finalizado.`);
+  }
+
+  const existing = await prisma.response.findUnique({
+    where:  { attemptId_sessionParticipantId: { attemptId, sessionParticipantId: sp.id } },
+    select: { id: true },
+  });
+  if (!existing) {
+    throw new SessionBootstrapError(
+      `Resposta do participante não encontrada para o Attempt ${attemptId}.`
+    );
+  }
+
+  await prisma.response.updateMany({
+    where: { attemptId, sessionParticipantId: sp.id, nextStoryAvailableAt: null },
+    data:  { nextStoryAvailableAt: new Date() },
+  });
+
   return getParticipantState(accessToken);
 }

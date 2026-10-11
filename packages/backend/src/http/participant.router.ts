@@ -1,6 +1,7 @@
 /**
  * participant.router.ts
- * Endpoints do participante: acesso, respostas e ack de resultado.
+ * Endpoints do participante: acesso, respostas, ack de resultado e marcos
+ * de tempo da tentativa (story-shown, next-story-available).
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
@@ -10,6 +11,8 @@ import {
   submitJudgment,
   submitPunishment,
   submitAcknowledge,
+  markStoryShown,
+  markNextStoryAvailable,
 } from '../services/response.service';
 import { SessionBootstrapError } from '../services/session.drafts';
 
@@ -86,6 +89,46 @@ participantRouter.post(
     const attemptId = req.params['attemptId'] as string;
     try {
       const state = await submitAcknowledge(req.accessToken!, attemptId);
+      res.status(200).json(state);
+    } catch (err) {
+      if (err instanceof SessionBootstrapError) {
+        const isToken = err.message.includes('Token inválido');
+        res.status(isToken ? 401 : httpStatus(err)).json({ error: err.message }); return;
+      }
+      next(err);
+    }
+  },
+);
+
+// POST /participant/attempts/:attemptId/story-shown
+// Sem body. Registra (horário do servidor, first-write) quando a história
+// completa ficou visível para esta criança.
+participantRouter.post(
+  '/attempts/:attemptId/story-shown', bearerAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    const attemptId = req.params['attemptId'] as string;
+    try {
+      const state = await markStoryShown(req.accessToken!, attemptId);
+      res.status(200).json(state);
+    } catch (err) {
+      if (err instanceof SessionBootstrapError) {
+        const isToken = err.message.includes('Token inválido');
+        res.status(isToken ? 401 : httpStatus(err)).json({ error: err.message }); return;
+      }
+      next(err);
+    }
+  },
+);
+
+// POST /participant/attempts/:attemptId/next-story-available
+// Sem body. Registra (horário do servidor, first-write) quando o avanço para a
+// próxima história ficou disponível para esta criança. Só após a finalização.
+participantRouter.post(
+  '/attempts/:attemptId/next-story-available', bearerAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    const attemptId = req.params['attemptId'] as string;
+    try {
+      const state = await markNextStoryAvailable(req.accessToken!, attemptId);
       res.status(200).json(state);
     } catch (err) {
       if (err instanceof SessionBootstrapError) {
