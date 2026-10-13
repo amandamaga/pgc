@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { getLang, translations, setPreviewLang, type Lang } from "../../lib/game-i18n";
 import { characterImage } from "../../lib/character-images";
+import { stimulusLayout } from "../../lib/character-layout";
 import { GameButton } from "../../components/game/game-button";
 import { PartnerWaiting } from "../../components/game/partner-waiting";
 import { PiggyBankCounter } from "../../components/game/piggy-bank-counter";
@@ -60,6 +61,15 @@ const DIVIDE_CUE_MS = 1600;
 // Pausa com a divisao ja feita, antes da primeira pergunta aparecer: e o momento
 // em que a crianca compara as duas pilhas para decidir se foi justa.
 const DIVIDED_HOLD_MS = 2200;
+
+// Pares fora da tabela de disposição: avisa uma vez por par, não a cada render.
+const warnedUnknownPairs = new Set<string>();
+function warnUnknownPair(distributor: string, receptor: string) {
+  const key = `${distributor}|${receptor}`;
+  if (warnedUnknownPairs.has(key)) return;
+  warnedUnknownPairs.add(key);
+  console.warn(`[layout] par não reconhecido: ${distributor} / ${receptor}; quem divide fica à esquerda.`);
+}
 
 // ── Coin dot ──────────────────────────────────────────────────────────────────
 function CoinDot({ size = 8 }: { size?: number }) {
@@ -195,42 +205,52 @@ function CharacterBlock({
 
   useEffect(() => {
     if (!transferring || transferCount <= 0) { setFlight([]); return; }
-    const row = rowRef.current, pileA = pileARef.current, pileB = pileBRef.current;
-    if (!row || !pileA || !pileB) return;
+    // Saem da pilha de quem divide e pousam na de quem recebe, seja qual for o
+    // lado de cada um no cartão.
+    const row = rowRef.current;
+    const from = distributorIsA ? pileARef.current : pileBRef.current;
+    const to = distributorIsA ? pileBRef.current : pileARef.current;
+    if (!row || !from || !to) return;
 
     const r = row.getBoundingClientRect();
-    const ra = pileA.getBoundingClientRect();
-    const rb = pileB.getBoundingClientRect();
+    const rf = from.getBoundingClientRect();
+    const rt = to.getBoundingClientRect();
 
     const dot = pileDot, gap = pileGap;
     const n = Math.min(transferCount, PILE_MAX_DOTS);
-    const cols = pileCols(n);
+    // Mesmo número de colunas que a CoinDotGrid vai desenhar no destino.
+    const cols = Math.min(pileCols(n), n);
     const rows = Math.ceil(n / cols);
-    // Pilha do receptor: ancorada a direita, cresce para a esquerda e para baixo
-    // a partir do centro vertical do retrato.
-    const bLeft = rb.left - r.left - (cols * dot + (cols - 1) * gap);
-    const bTop = rb.top - r.top - (rows * dot + (rows - 1) * gap) / 2;
+    const width = cols * dot + (cols - 1) * gap;
+    // A pilha do lado esquerdo é ancorada pela borda esquerda (cresce para a
+    // direita, rumo ao centro); a do lado direito, pela borda direita (cresce
+    // para a esquerda). Nas duas, o centro vertical é o do retrato.
+    const toLeft = distributorIsA ? rt.left - r.left - width : rt.left - r.left;
+    const toTop = rt.top - r.top - (rows * dot + (rows - 1) * gap) / 2;
     // Saem do meio da pilha do distribuidor.
-    const aCx = ra.left - r.left + ra.width / 2 - dot / 2;
-    const aCy = ra.top - r.top + ra.height / 2 - dot / 2;
+    const fromCx = rf.left - r.left + rf.width / 2 - dot / 2;
+    const fromCy = rf.top - r.top + rf.height / 2 - dot / 2;
 
     setFlight(Array.from({ length: n }, (_, i) => ({
-      x0: aCx, y0: aCy,
-      x1: bLeft + (i % cols) * (dot + gap),
-      y1: bTop + Math.floor(i / cols) * (dot + gap),
+      x0: fromCx, y0: fromCy,
+      x1: toLeft + (i % cols) * (dot + gap),
+      y1: toTop + Math.floor(i / cols) * (dot + gap),
     })));
-  }, [transferring, transferCount, circleSize]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [transferring, transferCount, circleSize, distributorIsA]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col items-center" style={{ gap: px(6) }}>
       <div ref={rowRef} className="flex items-start" style={{ gap: px(42), position: "relative" }}>
-        {/* Side A: coins above, circle below */}
-        <div className="flex flex-col items-center gap-0.5">
+        {/* Lado A (esquerda do cartão) */}
+        <div className="flex flex-col items-center gap-0.5"
+          data-testid="character-left" data-name={nameA}
+          data-role={distributorIsA ? "distributor" : "receptor"}>
           <div style={{ position: "relative" }}>
             <AnimatePresence>
               {distributorIsA && bubble && (
                 <motion.div
                   key="bubble-a"
+                  data-testid="distributor-bubble"
                   initial={{ opacity: 0, y: -4, scale: 0.9 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0 }}
@@ -257,20 +277,23 @@ function CharacterBlock({
                 top: "50%", transform: "translateY(-50%)", pointerEvents: "none",
               }}
               ref={pileARef}
+              data-testid="coin-pile-left"
             >
               <CoinDotGrid count={coinA} maxDots={PILE_MAX_DOTS} dotSize={pileDot}
                 cols={pileCols(coinA)} gap={pileGap} />
             </div>
           </div>
           <span className="font-nunito font-bold" style={{ fontSize: px(6), color: "#3C3C3C" }}>{nameA}</span>
-          <span className="font-nunito font-black" style={{ fontSize: px(9), color: "#58CC02", lineHeight: 1 }}>
+          <span className="font-nunito font-black" style={{ fontSize: px(9), color: "#58CC02", lineHeight: 1 }}
+            data-testid="coin-count-left">
             {coinA}
           </span>
         </div>
 
         {/* Arrow */}
         <div className="flex-shrink-0" style={{ marginTop: Math.round(circleSize / 2) - px(5) }}>
-          <svg width={px(22)} height={px(10)} viewBox="0 0 22 10" fill="none">
+          <svg width={px(22)} height={px(10)} viewBox="0 0 22 10" fill="none"
+            data-testid="distribution-arrow" data-direction={distributorIsA ? "right" : "left"}>
             <path
               d={distributorIsA
                 ? "M1 5 L21 5 M15 1.5 L21 5 L15 8.5"
@@ -280,13 +303,16 @@ function CharacterBlock({
           </svg>
         </div>
 
-        {/* Side B: coins above, circle below */}
-        <div className="flex flex-col items-center gap-0.5">
+        {/* Lado B (direita do cartão) */}
+        <div className="flex flex-col items-center gap-0.5"
+          data-testid="character-right" data-name={nameB}
+          data-role={distributorIsA ? "receptor" : "distributor"}>
           <div style={{ position: "relative" }}>
             <AnimatePresence>
               {!distributorIsA && bubble && (
                 <motion.div
                   key="bubble-b"
+                  data-testid="distributor-bubble"
                   initial={{ opacity: 0, y: -4, scale: 0.9 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0 }}
@@ -311,23 +337,26 @@ function CharacterBlock({
                 top: "50%", transform: "translateY(-50%)", pointerEvents: "none",
               }}
               ref={pileBRef}
+              data-testid="coin-pile-right"
             >
               <CoinDotGrid count={coinB} maxDots={PILE_MAX_DOTS} dotSize={pileDot}
                 cols={pileCols(coinB)} gap={pileGap} />
             </div>
           </div>
           <span className="font-nunito font-bold" style={{ fontSize: px(6), color: "#3C3C3C" }}>{nameB}</span>
-          <span className="font-nunito font-black" style={{ fontSize: px(9), color: "#58CC02", lineHeight: 1 }}>
+          <span className="font-nunito font-black" style={{ fontSize: px(9), color: "#58CC02", lineHeight: 1 }}
+            data-testid="coin-count-right">
             {coinB}
           </span>
         </div>
 
         {/* Moedas em voo: saem da pilha do distribuidor e pousam exatamente
-            onde a pilha do receptor vai aparecer. */}
+            onde a pilha do receptor vai aparecer, em qualquer direção. */}
         <AnimatePresence>
           {transferring && flight.map((f, i) => (
             <motion.div
               key={`fly-${i}`}
+              data-testid="coin-flight"
               initial={{ x: f.x0, y: f.y0, opacity: 0, scale: 0.5 }}
               animate={{
                 x: f.x1,
@@ -813,22 +842,34 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     return <FullScreenNotice title="Preparando a próxima história..." />;
   }
 
-  const nameA = attempt.distributorCharacter;
-  const nameB = attempt.receptorCharacter;
+  // Cada par tem lado fixo no cartão original; quem divide pode estar à
+  // esquerda (seta →) ou à direita (seta ←).
+  const layout = stimulusLayout(attempt.distributorCharacter, attempt.receptorCharacter);
+  if (!layout.known) warnUnknownPair(attempt.distributorCharacter, attempt.receptorCharacter);
+  const distributorIsA = layout.distributorSide === "left";
+  const nameA = layout.left;
+  const nameB = layout.right;
+  const distributorName = attempt.distributorCharacter;
   const total = attempt.endowment;
   const judged = own?.judgment ?? null;
   const punished = own?.punishment ?? null;
 
-  let displayCoinA = attempt.distributorDistribution;
-  let displayCoinB = attempt.receptorDistribution;
+  let distributorCoins = attempt.distributorDistribution;
+  let receptorCoins = attempt.receptorDistribution;
   if (prelude === "intro") {
-    displayCoinA = 0; displayCoinB = 0;
+    distributorCoins = 0; receptorCoins = 0;
   } else if (prelude === "dividing") {
-    displayCoinA = total; displayCoinB = 0;
+    distributorCoins = total; receptorCoins = 0;
   } else if (prelude === "transferring") {
     // O distribuidor ja fica com a parte dele; as que faltam estao voando.
-    displayCoinA = attempt.distributorDistribution; displayCoinB = 0;
+    distributorCoins = attempt.distributorDistribution; receptorCoins = 0;
+  } else if (result?.distributorResult) {
+    // Punido: a pilha de quem dividiu fica com o que sobrou, como no cartão
+    // original ("Lucas perdeu 8 moedas" com 4 na frente dele).
+    distributorCoins = result.distributorResult.finalCoins;
   }
+  const displayCoinA = distributorIsA ? distributorCoins : receptorCoins;
+  const displayCoinB = distributorIsA ? receptorCoins : distributorCoins;
 
   const distributorBubble = stage === "RESULT" && result?.distributorResult
     ? `${result.distributorResult.character} perdeu ${moedas(result.distributorResult.coinsLost)}`
@@ -859,7 +900,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   nameB={nameB}
                   coinA={displayCoinA}
                   coinB={displayCoinB}
-                  distributorIsA
+                  distributorIsA={distributorIsA}
                   circleSize={144}
                   bubble={distributorBubble}
                   transferring={prelude === "transferring"}
@@ -981,7 +1022,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   className="flex flex-col gap-2"
                 >
                   <DecisionCard
-                    question={T.punishQuestion(nameA, attempt.punishmentLoss)}
+                    question={T.punishQuestion(distributorName, attempt.punishmentLoss)}
                     buttons={[
                       { value: "Punish",   label: "SIM", bg: "#58CC02", border: "#46A302" },
                       { value: "NoPunish", label: "NÃO", bg: "#FF4B4B", border: "#CC3939" },
