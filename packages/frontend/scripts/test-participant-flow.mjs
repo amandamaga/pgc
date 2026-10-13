@@ -251,6 +251,133 @@ try {
   await checkNextStory({ label:'perda, com ganho da dupla (modal)',        ownLoss:true,  gain:true  });
   await checkNextStory({ label:'sem perda, sem ganho',                     ownLoss:false, gain:false });
   await checkNextStory({ label:'sem perda, com ganho da dupla (modal)',    ownLoss:false, gain:true  });
+
+  // ===========================================================================
+  // F1.6: disposição dos personagens como nos cartões originais. Cada par tem
+  // lado fixo; quem divide pode estar à esquerda (→) ou à direita (←). Os 16
+  // casos são estímulos reais do seed: para cada par, um com quem divide à
+  // esquerda e outro com quem divide à direita.
+  // ===========================================================================
+  const LAYOUT_CASES = [
+    { card:'A2',  distributor:'Alice',    receptor:'Laura',    side:'left',  endowment:4,  dd:3,  rd:1,  loss:2,  final:1 },
+    { card:'A5',  distributor:'Laura',    receptor:'Alice',    side:'right', endowment:4,  dd:2,  rd:2,  loss:1,  final:1 },
+    { card:'A4',  distributor:'David',    receptor:'Theo',     side:'left',  endowment:8,  dd:6,  rd:2,  loss:4,  final:2 },
+    { card:'A10', distributor:'Theo',     receptor:'David',    side:'right', endowment:8,  dd:4,  rd:4,  loss:2,  final:2 },
+    { card:'A8',  distributor:'Isabella', receptor:'Cecilia',  side:'left',  endowment:12, dd:9,  rd:3,  loss:6,  final:3 },
+    { card:'A3',  distributor:'Cecilia',  receptor:'Isabella', side:'right', endowment:12, dd:6,  rd:6,  loss:3,  final:3 },
+    { card:'A6',  distributor:'Maria',    receptor:'Sarah',    side:'left',  endowment:20, dd:15, rd:5,  loss:10, final:5 },
+    { card:'B16', distributor:'Sarah',    receptor:'Maria',    side:'right', endowment:28, dd:21, rd:7,  loss:14, final:7 },
+    { card:'A14', distributor:'Sofia',    receptor:'Olivia',   side:'left',  endowment:32, dd:24, rd:8,  loss:16, final:8 },
+    { card:'A9',  distributor:'Olivia',   receptor:'Sofia',    side:'right', endowment:32, dd:16, rd:16, loss:8,  final:8 },
+    { card:'A1',  distributor:'Lucas',    receptor:'Isaac',    side:'left',  endowment:16, dd:12, rd:4,  loss:8,  final:4 },
+    { card:'A16', distributor:'Isaac',    receptor:'Lucas',    side:'right', endowment:16, dd:8,  rd:8,  loss:4,  final:4 },
+    { card:'A11', distributor:'Oliver',   receptor:'William',  side:'left',  endowment:24, dd:18, rd:6,  loss:12, final:6 },
+    { card:'A13', distributor:'William',  receptor:'Oliver',   side:'right', endowment:24, dd:12, rd:12, loss:6,  final:6 },
+    { card:'A12', distributor:'Phillip',  receptor:'Benjamin', side:'left',  endowment:28, dd:21, rd:7,  loss:14, final:7 },
+    { card:'A15', distributor:'Benjamin', receptor:'Phillip',  side:'right', endowment:28, dd:14, rd:14, loss:7,  final:7 },
+  ];
+  const other = side => side === 'left' ? 'right' : 'left';
+  const YELLOW = 'rgb(255, 200, 0)', BLUE = 'rgb(28, 176, 246)';
+  async function sideInfo(page, side) {
+    const el = page.locator(`[data-testid="character-${side}"]`);
+    const box = await el.boundingBox();
+    return {
+      name: await el.getAttribute('data-name'),
+      role: await el.getAttribute('data-role'),
+      x: box.x + box.width / 2,
+      count: (await page.getByTestId(`coin-count-${side}`).innerText()).trim(),
+      border: await el.locator('img').first().evaluate(img => getComputedStyle(img.parentElement).borderTopColor),
+    };
+  }
+  async function checkLayoutCase(c) {
+    const tag = `${c.card} ${c.distributor}→${c.receptor}`;
+    const dSide = c.side, rSide = other(c.side);
+    const left = dSide === 'left' ? c.distributor : c.receptor;
+    const right = dSide === 'left' ? c.receptor : c.distributor;
+    const attempt = { id:`att-f16-${c.card}`, endowment:c.endowment, distributorDistribution:c.dd, receptorDistribution:c.rd,
+      distributorCharacter:c.distributor, receptorCharacter:c.receptor, punishmentLoss:c.loss };
+
+    // --- história: lados, pilha inicial, seta, voo das moedas -------------------
+    const s = await openF15(f15Snap({ stage:'JUDGMENT', attempt }));
+    const { page } = s;
+    await page.getByRole('button', {name:'Ver História'}).click();
+    // Registra, quadro a quadro, a posição de cada moeda em voo.
+    await page.evaluate(() => {
+      window.__flight = [];
+      const tick = () => {
+        const coins = [...document.querySelectorAll('[data-testid="coin-flight"]')];
+        if (coins.length) window.__flight.push(coins.map(el => { const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }));
+        if (window.__flight.length < 2000) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await expect(page.getByText('Hora de Dividir',{exact:true})).toBeVisible();
+
+    const L = await sideInfo(page, 'left'), R = await sideInfo(page, 'right');
+    assert.equal(L.name, left,  `${tag}: personagem da esquerda`);
+    assert.equal(R.name, right, `${tag}: personagem da direita`);
+    assert.ok(L.x < R.x, `${tag}: esquerda antes da direita na tela`);
+    const D = dSide === 'left' ? L : R, Rc = dSide === 'left' ? R : L;
+    assert.equal(D.role, 'distributor'); assert.equal(Rc.role, 'receptor');
+    assert.equal(D.border, YELLOW, `${tag}: borda amarela em quem divide`);
+    assert.equal(Rc.border, BLUE, `${tag}: borda azul em quem recebe`);
+    assert.equal(D.count, String(c.endowment), `${tag}: pilha inicial com quem divide`);
+    assert.equal(Rc.count, '0', `${tag}: quem recebe começa sem moedas`);
+
+    const arrow = page.getByTestId('distribution-arrow');
+    const direction = await arrow.getAttribute('data-direction');
+    const head = await arrow.locator('path').getAttribute('d');
+    assert.equal(direction, Rc.x > D.x ? 'right' : 'left', `${tag}: seta aponta de quem divide para quem recebe`);
+    assert.ok(direction === 'right' ? head.startsWith('M1 5 L21 5') : head.startsWith('M21 5 L1 5'), `${tag}: desenho da seta (${head})`);
+
+    await expect(page.getByText('Moedas distribuídas...',{exact:true})).toBeVisible({timeout:8000});
+    const frames = await page.evaluate(() => window.__flight);
+    assert.ok(frames.length > 5, `${tag}: voo das moedas registrado`);
+    const first = frames[0], last = frames[frames.length - 1];
+    const sign = Math.sign(Rc.x - D.x);
+    for (let i = 0; i < last.length; i++) {
+      assert.ok(Math.sign(last[i].x - first[i].x) === sign, `${tag}: moeda ${i} voa no sentido da seta`);
+    }
+    const pile = await page.getByTestId(`coin-pile-${rSide}`).boundingBox();
+    for (const p of last) {
+      assert.ok(p.x >= pile.x - 3 && p.x <= pile.x + pile.width + 3, `${tag}: moeda pousa na pilha de quem recebe (x=${p.x.toFixed(1)}, pilha ${pile.x.toFixed(1)}–${(pile.x + pile.width).toFixed(1)})`);
+    }
+    const dAfter = (await sideInfo(page, dSide)).count, rAfter = (await sideInfo(page, rSide)).count;
+    assert.equal(dAfter, String(c.dd), `${tag}: quem divide fica com a parte dele`);
+    assert.equal(rAfter, String(c.rd), `${tag}: quem recebe fica com a parte dele`);
+    await s.context.close();
+
+    // --- punição: a pergunta cita quem divide -----------------------------------
+    const pq = await openF15(f15Snap({ stage:'PUNISHMENT', attempt, oj:'Unjust', pj:'Unjust' }));
+    await expect(pq.page.getByText(`Você daria 1 das suas moedas para que ${c.distributor} perca ${c.loss === 1 ? '1 moeda' : `${c.loss} moedas`}?`, {exact:true})).toBeVisible();
+    await pq.context.close();
+
+    // --- resultado com punição: balão e pilha final em quem dividiu --------------
+    const rs = await openF15(f15Snap({
+      stage:'RESULT', attempt, oj:'Unjust', op:'Punish', pj:'Unjust', pp:'Punish', ownCoins:79,
+      result: { ownIndividualCost:1, ownCoinsAfter:79, punishmentApplied:true,
+        distributorResult:{ character:c.distributor, finalCoins:c.final, coinsLost:c.loss }, culturalConsequence:0, groupCoinsAfter:0 },
+    }));
+    const bubble = rs.page.locator(`[data-testid="character-${dSide}"] [data-testid="distributor-bubble"]`);
+    await expect(bubble).toBeVisible();
+    await expect(bubble).toContainText(`${c.distributor} perdeu ${c.loss === 1 ? '1 moeda' : `${c.loss} moedas`}`);
+    assert.equal(await rs.page.locator(`[data-testid="character-${rSide}"] [data-testid="distributor-bubble"]`).count(), 0, `${tag}: balão só em quem dividiu`);
+    assert.equal((await sideInfo(rs.page, dSide)).count, String(c.final), `${tag}: pilha de quem dividiu mostra o que sobrou`);
+    assert.equal((await sideInfo(rs.page, rSide)).count, String(c.rd), `${tag}: pilha de quem recebeu não muda`);
+    await rs.context.close();
+
+    // --- resultado sem punição: pilha de quem dividiu não muda -------------------
+    const np = await openF15(f15Snap({
+      stage:'RESULT', attempt, oj:'Just', op:'NoPunish', pj:'Just', pp:'NoPunish',
+      result: { ownIndividualCost:0, ownCoinsAfter:80, punishmentApplied:false, distributorResult:null, culturalConsequence:0, groupCoinsAfter:0 },
+    }));
+    await expect(np.page.getByTestId('distribution-arrow')).toBeVisible();
+    assert.equal((await sideInfo(np.page, dSide)).count, String(c.dd), `${tag}: sem punição, quem dividiu mantém ${c.dd}`);
+    assert.equal(await np.page.getByTestId('distributor-bubble').count(), 0);
+    await np.context.close();
+  }
+  for (const c of LAYOUT_CASES) await checkLayoutCase(c);
+  console.log(`PASS F1.6 disposição na tela: ${LAYOUT_CASES.length} estímulos reais (8 pares × 2 direções) — lados, pilha inicial, seta, voo das moedas, pergunta, balão e pilha final`);
   const stages = { P1: 'WAITING_SESSION', P2: 'WAITING_SESSION' };
   const posts = [];
   let failure = 0;
