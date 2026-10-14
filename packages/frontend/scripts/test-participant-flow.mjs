@@ -63,8 +63,9 @@ try {
   // memória que registra cada requisição com horário de chegada e de resposta.
   // ===========================================================================
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  // Tempos reais da tela (LOSS_READ_BASE_MS + LOSS_READ_PER_LINE_MS * 1 linha).
-  const LOSS_ONE_LINE_MS = 5000 + 2800;
+  // Tempos reais da tela (F2): o aviso de perda dura LOSS_READ_PER_LINE_MS por linha.
+  const LOSS_PER_LINE_MS = 3000;
+  const LOSS_ONE_LINE_MS = LOSS_PER_LINE_MS;
   const attemptA = { id:'att-f15-a', endowment:12, distributorDistribution:8, receptorDistribution:4, distributorCharacter:'Ana', receptorCharacter:'Bia', punishmentLoss:4 };
   const attemptB = { id:'att-f15-b', endowment:12, distributorDistribution:6, receptorDistribution:6, distributorCharacter:'Caio', receptorCharacter:'Duda', punishmentLoss:3 };
   function f15Snap(o) {
@@ -142,7 +143,7 @@ try {
     assert.equal(s.count('story'), 0, 'dividing não envia story-shown');
     await expect(page.getByText('Dividindo...',{exact:true})).toBeVisible();
     assert.equal(s.count('story'), 0, 'transferring não envia story-shown');
-    await expect(page.getByText('Moedas distribuídas...',{exact:true})).toBeVisible();
+    await expect(page.getByText('Moedas distribuídas...',{exact:true})).toBeVisible({timeout:10000});
     const dividedSeenAt = Date.now();
     assert.equal(s.count('story'), 0, 'divided não envia story-shown');
 
@@ -330,7 +331,7 @@ try {
     assert.equal(direction, Rc.x > D.x ? 'right' : 'left', `${tag}: seta aponta de quem divide para quem recebe`);
     assert.ok(direction === 'right' ? head.startsWith('M1 5 L21 5') : head.startsWith('M21 5 L1 5'), `${tag}: desenho da seta (${head})`);
 
-    await expect(page.getByText('Moedas distribuídas...',{exact:true})).toBeVisible({timeout:8000});
+    await expect(page.getByText('Moedas distribuídas...',{exact:true})).toBeVisible({timeout:10000});
     const frames = await page.evaluate(() => window.__flight);
     assert.ok(frames.length > 5, `${tag}: voo das moedas registrado`);
     const first = frames[0], last = frames[frames.length - 1];
@@ -378,6 +379,62 @@ try {
   }
   for (const c of LAYOUT_CASES) await checkLayoutCase(c);
   console.log(`PASS F1.6 disposição na tela: ${LAYOUT_CASES.length} estímulos reais (8 pares × 2 direções) — lados, pilha inicial, seta, voo das moedas, pergunta, balão e pilha final`);
+
+  // ===========================================================================
+  // F2: ritmo padronizado em 3 s. Cada etapa da história ("Hora de Dividir",
+  // moedas voando, "Moedas distribuídas...") dura 3 s, e o aviso de perda dura
+  // 3 s por linha. Mede no navegador quando cada etapa aparece.
+  // ===========================================================================
+  const STEP_MS = 3000, TOL_MS = 450;
+  const near = (got, want, what) => assert.ok(Math.abs(got - want) <= TOL_MS, `${what}: ${got} ms (esperado ${want} ± ${TOL_MS} ms)`);
+  {
+    const s = await openF15(f15Snap({ stage:'JUDGMENT' }));
+    const { page } = s;
+    // Marca, no próprio navegador, o instante em que cada etapa fica visível.
+    await page.evaluate(() => {
+      window.__steps = {};
+      const watch = { cue:'Hora de Dividir', flying:'Dividindo...', divided:'Moedas distribuídas...' };
+      const tick = () => {
+        const text = document.body.innerText;
+        for (const [k, t] of Object.entries(watch)) if (!window.__steps[k] && text.includes(t)) window.__steps[k] = performance.now();
+        const q = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Justa');
+        if (!window.__steps.question && q) window.__steps.question = performance.now();
+        if (!window.__steps.question) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await page.getByRole('button', {name:'Ver História'}).click();
+    await expect(page.getByRole('button', {name:'Justa',exact:true})).toBeVisible({timeout:15000});
+    const st = await page.evaluate(() => window.__steps);
+    near(st.flying - st.cue, STEP_MS, '"Hora de Dividir"');
+    near(st.divided - st.flying, STEP_MS, 'moedas voando');
+    near(st.question - st.divided, STEP_MS, '"Moedas distribuídas..."');
+    console.log(`PASS F2 história: Hora de Dividir ${Math.round(st.flying - st.cue)} ms, voo ${Math.round(st.divided - st.flying)} ms, Moedas distribuídas ${Math.round(st.question - st.divided)} ms`);
+    await s.context.close();
+  }
+  // Aviso de perda: 3 s com uma linha, 6 s com as duas. Mede da entrada em
+  // RESULT até o botão de avançar aparecer (que espera o aviso terminar).
+  for (const { label, ownPunish, partnerPunish, lines } of [
+    { label:'uma perda', ownPunish:'Punish', partnerPunish:'NoPunish', lines:1 },
+    { label:'duas perdas', ownPunish:'Punish', partnerPunish:'Punish', lines:2 },
+  ]) {
+    const both = lines === 2;
+    const s = await openF15(f15Snap({
+      stage:'RESULT', oj:'Unjust', op:ownPunish, pj:'Unjust', pp:partnerPunish, ownCoins:79,
+      result:{ ownIndividualCost:1, ownCoinsAfter:79, punishmentApplied:both,
+        distributorResult: both ? { character:'Ana', finalCoins:4, coinsLost:4 } : null, culturalConsequence:0, groupCoinsAfter:0 },
+    }));
+    const { page } = s;
+    await expect(page.getByText('Você perdeu 1 moeda',{exact:true})).toBeVisible();
+    const shownAt = await page.evaluate(() => performance.now());
+    await expect(page.getByRole('button', {name:'Ver a próxima história',exact:true})).toBeVisible({timeout:10000});
+    const doneAt = await page.evaluate(() => performance.now());
+    // O botão vem logo depois do fim do aviso: só a saída do aviso (~0,3 s) entre os dois.
+    const want = LOSS_PER_LINE_MS * lines, got = doneAt - shownAt;
+    assert.ok(got >= want - 150 && got <= want + 500, `aviso de perda com ${label}: botão em ${Math.round(got)} ms (esperado entre ${want} e ${want + 500} ms)`);
+    console.log(`PASS F2 aviso de perda — ${label}: ${Math.round(doneAt - shownAt)} ms`);
+    await s.context.close();
+  }
   const stages = { P1: 'WAITING_SESSION', P2: 'WAITING_SESSION' };
   const posts = [];
   let failure = 0;
