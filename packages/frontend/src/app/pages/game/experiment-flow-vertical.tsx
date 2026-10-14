@@ -29,11 +29,10 @@ const PUNISH_COST_TO_SELF = 1;
 // dividir" um dos personagens segura o endowment inteiro (ate 32).
 const PILE_MAX_DOTS = 32;
 
-// Tempo de leitura do aviso de perdas: um piso para a crianca registrar que
-// algo mudou, mais uma folga por linha. Duas perdas nao se leem no mesmo tempo
-// que uma.
-const LOSS_READ_BASE_MS = 5000;
-const LOSS_READ_PER_LINE_MS = 2800;
+// Tempo de leitura do aviso de perdas: 3 s por linha (uma perda = 3 s, as duas
+// = 6 s), no mesmo ritmo das etapas da historia. So depois dele o botao "Ver a
+// proxima historia" aparece.
+const LOSS_READ_PER_LINE_MS = 3000;
 // As linhas entram uma de cada vez, com pausa suficiente para a primeira ser
 // lida antes da segunda aparecer.
 const LOSS_LINE_STAGGER_S = 0.5;
@@ -49,18 +48,23 @@ type Prelude = "intro" | "dividing" | "transferring" | "divided" | "ready";
 // anos e nao controla o avanco destas etapas, entao o ritmo e deliberadamente
 // lento: e melhor a crianca esperar um pouco do que perder o que aconteceu.
 //
-// Duracao do voo de cada moeda e do escalonamento entre elas. O total nunca
-// passa de COIN_FLIGHT_MS + COIN_FLIGHT_SPREAD_MS, independente de quantas
-// moedas o distribuidor passou.
-const COIN_FLIGHT_MS = 750;
-const COIN_FLIGHT_SPREAD_MS = 700;
-const COIN_TRANSFER_MS = COIN_FLIGHT_MS + COIN_FLIGHT_SPREAD_MS + 250;
+// Cada etapa da historia dura STORY_STEP_MS (3 s, definido com a pesquisadora):
+// "Hora de Dividir" -> moedas voando -> "Moedas distribuidas..." -> pergunta.
+const STORY_STEP_MS = 3000;
 // Tempo que "Hora de Dividir" fica na tela antes das moedas sairem: a crianca
 // precisa ler o aviso, mas nao precisa clicar em nada para a divisao acontecer.
-const DIVIDE_CUE_MS = 1600;
+const DIVIDE_CUE_MS = STORY_STEP_MS;
+// Voo das moedas: a etapa inteira dura STORY_STEP_MS. Cada moeda voa por
+// COIN_FLIGHT_MS e as saidas se espalham por COIN_FLIGHT_SPREAD_MS, deixando uma
+// folga de COIN_LANDED_HOLD_MS com todas ja pousadas. O total nao depende de
+// quantas moedas o distribuidor passou.
+const COIN_TRANSFER_MS = STORY_STEP_MS;
+const COIN_LANDED_HOLD_MS = 250;
+const COIN_FLIGHT_MS = 1400;
+const COIN_FLIGHT_SPREAD_MS = COIN_TRANSFER_MS - COIN_FLIGHT_MS - COIN_LANDED_HOLD_MS;
 // Pausa com a divisao ja feita, antes da primeira pergunta aparecer: e o momento
 // em que a crianca compara as duas pilhas para decidir se foi justa.
-const DIVIDED_HOLD_MS = 2200;
+const DIVIDED_HOLD_MS = STORY_STEP_MS;
 
 // Pares fora da tabela de disposição: avisa uma vez por par, não a cada render.
 const warnedUnknownPairs = new Set<string>();
@@ -513,7 +517,9 @@ function LossRow({ msg, delay = 0 }: { msg: string; delay?: number }) {
     <motion.div
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0 }}
+      // O atraso escalona so a entrada; na saida as linhas somem juntas, para o
+      // botao de avancar nao esperar alem dos 3 s por linha.
+      exit={{ opacity: 0, transition: { delay: 0 } }}
       transition={{ delay }}
       className="flex items-center gap-2.5 rounded-xl px-4 py-2"
       style={{ backgroundColor: "#FFF0F0", border: "2px solid #FFCDD2" }}
@@ -766,7 +772,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     const t = setTimeout(() => {
       setShowLossFeedback(false);
       setLossFeedbackDoneFor(attemptId);
-    }, LOSS_READ_BASE_MS + LOSS_READ_PER_LINE_MS * lossLineCount);
+    }, LOSS_READ_PER_LINE_MS * lossLineCount);
     return () => clearTimeout(t);
   }, [stage, anyoneLostCoins, lossLineCount, attemptId]);
 
