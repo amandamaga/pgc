@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, createParticipantClient, WAITING_STAGES, type ParticipantState, type Stage } from "../lib/participant-api";
+import { ApiError, createParticipantClient, HEARTBEAT_INTERVAL_MS, WAITING_STAGES, type ParticipantState, type Stage } from "../lib/participant-api";
 
 /**
  * Situação de um marco de tempo (story-shown / next-story-available) para a
@@ -117,6 +117,31 @@ export function useParticipantState(token: string) {
     const timer = setTimeout(() => { void run(); }, 1200);
     return () => clearTimeout(timer);
   }, [state, error, run]);
+
+  // Heartbeat de presença em TODAS as telas. O polling acima só roda nas telas
+  // de espera; sem isto, durante o próprio turno (julgando, punindo, lendo o
+  // resultado) o lastSeenAt envelhecia e o parceiro via falso "desconectado".
+  // Canal próprio: não usa `busy`, não mexe em `state` nem em `error` — uma
+  // falha aqui não deve aparecer para a criança (o próximo envio tenta de novo).
+  const sessionOver = state?.stage === "COMPLETED";
+  useEffect(() => {
+    if (sessionOver) return;
+    let current: AbortController | null = null;
+    const beat = () => {
+      current?.abort();
+      current = new AbortController();
+      client.postHeartbeat(current.signal).catch(() => { /* silencioso */ });
+    };
+    const timer = setInterval(beat, HEARTBEAT_INTERVAL_MS);
+    // Navegadores atrasam timers em aba escondida; ao voltar, avisa na hora.
+    const onVisible = () => { if (document.visibilityState === "visible") beat(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      current?.abort();
+    };
+  }, [client, sessionOver]);
 
   // "Tentar de novo" é uma ação da criança: libera os marcos que falharam para
   // que a tela possa enviá-los outra vez quando voltar ao ponto certo.
