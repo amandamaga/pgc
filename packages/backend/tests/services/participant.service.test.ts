@@ -8,12 +8,12 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 vi.mock('../../src/config/prisma', () => ({
   prisma: {
-    sessionParticipant: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+    sessionParticipant: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     attempt: { findFirst: vi.fn() },
   },
 }));
 
-import { getParticipantState } from '../../src/services/participant.service';
+import { getParticipantState, touchParticipant } from '../../src/services/participant.service';
 import { SessionBootstrapError } from '../../src/services/session.drafts';
 import { prisma } from '../../src/config/prisma';
 
@@ -575,5 +575,36 @@ describe('currentAttempt.punishmentLoss', () => {
 
     expect(result.currentAttempt?.punishmentLoss).toBe(mockTrialRecord.distributorLost);
     expect(result.trialResult?.distributorResult?.coinsLost).toBe(mockTrialRecord.distributorLost);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// touchParticipant (heartbeat)
+// ---------------------------------------------------------------------------
+
+describe('touchParticipant', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('atualiza só o lastSeenAt do dono do token, sem ler estado', async () => {
+    vi.mocked(prisma.sessionParticipant.updateMany).mockResolvedValue({ count: 1 } as never);
+
+    await touchParticipant('tok-abc');
+
+    expect(prisma.sessionParticipant.updateMany).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(prisma.sessionParticipant.updateMany).mock.calls[0][0] as {
+      where: Record<string, unknown>; data: Record<string, unknown>;
+    };
+    expect(call.where).toEqual({ accessToken: 'tok-abc' });
+    expect(Object.keys(call.data)).toEqual(['lastSeenAt']);
+    expect(call.data.lastSeenAt).toBeInstanceOf(Date);
+
+    expect(prisma.sessionParticipant.findUnique).not.toHaveBeenCalled();
+    expect(prisma.sessionParticipant.findFirst).not.toHaveBeenCalled();
+    expect(prisma.attempt.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('token desconhecido → SessionBootstrapError', async () => {
+    vi.mocked(prisma.sessionParticipant.updateMany).mockResolvedValue({ count: 0 } as never);
+    await expect(touchParticipant('tok-xxx')).rejects.toBeInstanceOf(SessionBootstrapError);
   });
 });

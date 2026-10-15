@@ -3,7 +3,7 @@ import request from 'supertest';
 import { app } from '../../src/http/app';
 
 vi.mock('../../src/services/participant.service', () => ({
-  getParticipantState: vi.fn(), deriveStage: vi.fn(),
+  getParticipantState: vi.fn(), touchParticipant: vi.fn(), deriveStage: vi.fn(),
 }));
 vi.mock('../../src/services/response.service', () => ({
   submitJudgment: vi.fn(), submitPunishment: vi.fn(), submitAcknowledge: vi.fn(),
@@ -115,6 +115,40 @@ describe('GET /participant/me', () => {
     vi.mocked(participantService.getParticipantState).mockRejectedValue(new Error('DB'));
     const res = await request(app).get('/participant/me').set('Authorization', BEARER);
     expect(res.status).toBe(500);
+  });
+});
+
+// ===========================================================================
+// POST /participant/heartbeat
+// ===========================================================================
+
+describe('POST /participant/heartbeat', () => {
+  it('204 sem corpo com token válido', async () => {
+    vi.mocked(participantService.touchParticipant).mockResolvedValue(undefined);
+    const res = await request(app).post('/participant/heartbeat').set('Authorization', BEARER);
+    expect(res.status).toBe(204);
+    expect(res.text).toBe('');
+    expect(participantService.touchParticipant).toHaveBeenCalledWith('valid-token');
+  });
+
+  it('não consulta o estado da sessão', async () => {
+    vi.mocked(participantService.touchParticipant).mockResolvedValue(undefined);
+    await request(app).post('/participant/heartbeat').set('Authorization', BEARER);
+    expect(participantService.getParticipantState).not.toHaveBeenCalled();
+  });
+
+  it('401 sem Authorization', async () => {
+    const res = await request(app).post('/participant/heartbeat');
+    expect(res.status).toBe(401);
+    expect(participantService.touchParticipant).not.toHaveBeenCalled();
+  });
+
+  it('401 com token desconhecido', async () => {
+    vi.mocked(participantService.touchParticipant).mockRejectedValue(
+      new SessionBootstrapError('Token inválido ou participante não encontrado.'),
+    );
+    const res = await request(app).post('/participant/heartbeat').set('Authorization', BEARER);
+    expect(res.status).toBe(401);
   });
 });
 
