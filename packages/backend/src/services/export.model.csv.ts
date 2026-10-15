@@ -7,6 +7,7 @@
  */
 
 import type { ExportRow } from '../domain/export.contract';
+import { shouldAwardCulturalConsequence } from '../domain/experiment.rules';
 
 // ---------------------------------------------------------------------------
 // Cabeçalho exato da planilha de referência (24 colunas)
@@ -112,40 +113,39 @@ function mapD(culturant: string | null): string {
 }
 
 /**
- * APtype:
- * - sem culturant → vazio
- * - A/Aa: Cp ou Cnp → APa; D → D
- * - B: (U+Cnp) ou (E+Cp) → APb; demais (inclusive D) → APd
- * - C: (E+Cnp) ou (U+Cp) → APc; demais (inclusive D) → APd
+ * APtype — derivado da mesma matriz que decide a consequência cultural
+ * (shouldAwardCulturalConsequence), para que as duas regras nunca divirjam:
+ *
+ * - sem culturant          → vazio
+ * - desacordo (D)          → A/Aa: 'D'  |  B/C: 'APd'
+ * - consenso que gera CC   → A/Aa: 'APa' | B: 'APb' | C: 'APc'
+ * - consenso que não gera  → 'APd'
+ *
+ * Rótulos do sistema (classifyCulturant):
+ *   Bp  = punir igual       Cnp = não punir igual
+ *   Cp  = punir desigual    Bnp = não punir desigual
+ * Logo: B → APb para Bp/Bnp; C → APc para Cp/Cnp; A → APa para os quatro.
+ *
+ * A planilha G1P1 usa só Cp/Cnp na coluna Culturant (o Bp do sistema aparece
+ * lá como Cp em distribuição igual); o APtype não depende desse rótulo.
  */
-function mapAPtype(row: ExportRow, eu: string): string {
+const AP_BY_CONDITION: Record<'A' | 'B' | 'C', string> = {
+  A: 'APa',
+  B: 'APb',
+  C: 'APc',
+};
+
+function mapAPtype(row: ExportRow): string {
   const culturant = row.culturant;
   if (culturant === null) return '';
 
-  const cond = mapCondition(row); // considera Aa
-
-  if (cond === 'A' || cond === 'Aa') {
-    if (culturant === 'Cp' || culturant === 'Cnp') return 'APa';
-    return 'D';
+  if (culturant === 'D') {
+    return row.condition === 'A' ? 'D' : 'APd';
   }
 
-  if (cond === 'B') {
-    if (
-      (eu === 'U' && culturant === 'Cnp') ||
-      (eu === 'E' && culturant === 'Cp')
-    ) return 'APb';
-    return 'APd';
-  }
-
-  if (cond === 'C') {
-    if (
-      (eu === 'E' && culturant === 'Cnp') ||
-      (eu === 'U' && culturant === 'Cp')
-    ) return 'APc';
-    return 'APd';
-  }
-
-  return '';
+  return shouldAwardCulturalConsequence(row.condition, culturant)
+    ? AP_BY_CONDITION[row.condition]
+    : 'APd';
 }
 
 // ---------------------------------------------------------------------------
@@ -200,7 +200,7 @@ export function serializeModelExportCsv(rows: ExportRow[]): string {
       row.culturant ?? '',          // Culturant
       mapD(row.culturant),          // D
       row.disagreementCountAfter !== null ? row.disagreementCountAfter : '', // D Cumulated
-      mapAPtype(row, eu),           // APtype
+      mapAPtype(row),                // APtype
       '',                           // COMENTÁRIOS (sempre vazio)
     ];
 
