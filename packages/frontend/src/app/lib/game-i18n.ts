@@ -145,6 +145,13 @@ export const translations = {
 // sessionStorage is used ONLY by /game-preview (no real session exists yet).
 const PREVIEW_KEY = "gameLang:preview";
 
+// Idioma da tela da criança nesta versão: só português. O alternador de idioma
+// do jogo foi retirado (F2); as traduções em norueguês continuam acima para uma
+// versão futura com idioma por sessão. Fixo aqui, e não via getLang(), para que
+// uma escolha antiga guardada no navegador (gameLang:preview / researchLang)
+// não deixe o jogo de uma criança em outro idioma.
+export const PARTICIPANT_LANG: Lang = "pt";
+
 export function getPreviewLang(): Lang | null {
   return (sessionStorage.getItem(PREVIEW_KEY) as Lang) || null;
 }

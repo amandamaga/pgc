@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router";
 import { GameButton } from "../../components/game/game-button";
 import { motion, AnimatePresence } from "motion/react";
-import { getLang, translations } from "../../lib/game-i18n";
+import { translations, PARTICIPANT_LANG } from "../../lib/game-i18n";
 import tutorialVideoSrc from "../../../imports/Instru__o_do_Jogo.mp4";
 
 const mockExperimentConfig = {
@@ -15,13 +15,12 @@ export function GameIntroPage({ onStart }: { onStart?: () => void } = {}) {
   const { sessionId, participantId } = useParams();
 
   const [step, setStep] = useState<1 | 2>(1);
-  const lang = getLang(sessionId);
   const [playerName, setPlayerName] = useState("");
   const [touched, setTouched] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const T = translations[lang];
+  const T = translations[PARTICIPANT_LANG];
   const trimmed = playerName.trim();
   const isValid = trimmed.length >= 1;
   const showError = touched && !isValid;
