@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { getLang, translations, setPreviewLang, type Lang } from "../../lib/game-i18n";
+import { translations, PARTICIPANT_LANG } from "../../lib/game-i18n";
 import { characterImage } from "../../lib/character-images";
 import { stimulusLayout } from "../../lib/character-layout";
 import { GameButton } from "../../components/game/game-button";
@@ -656,8 +656,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     markStoryShown, markNextStoryAvailable,
   } = useParticipantState(token);
 
-  const [lang, setLangState] = useState<Lang>(() => getLang(undefined));
-  const T = translations[lang];
+  const T = translations[PARTICIPANT_LANG];
   const { playCulturantSound, playPunishmentSound } = useGameSounds();
 
   const stage = state?.stage;
@@ -1100,19 +1099,6 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
 
         <SidebarCoins count={balances.partnerCoins} label={partnerName} align="right" />
 
-      </div>
-
-      {/* Alternador de idioma — discreto, para a pesquisadora */}
-      <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5">
-        <button
-          onClick={() => { const next: Lang = lang === "pt" ? "no" : "pt"; setPreviewLang(next); setLangState(next); }}
-          className="rounded-xl px-2.5 py-1 opacity-20 hover:opacity-70 transition-opacity"
-          style={{ backgroundColor: "#A560F8" }}
-        >
-          <span className="font-nunito font-bold text-white" style={{ fontSize: 9 }}>
-            {lang === "pt" ? "🇳🇴 Norsk" : "🇧🇷 PT"}
-          </span>
-        </button>
       </div>
 
       {/* Ganho da dupla */}
