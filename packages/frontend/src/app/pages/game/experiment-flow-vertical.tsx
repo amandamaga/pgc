@@ -701,11 +701,27 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   const [justPunished, setJustPunished] = useState(false);
   const [showLossFeedback, setShowLossFeedback] = useState(false);
 
+  // Clique único entre histórias (F2): o "Ver a próxima história" do resultado
+  // já é o clique que inicia a história seguinte. Marca que esta criança
+  // avançou a partir de um resultado; a próxima tentativa começa direto na
+  // divisão, sem o botão "Ver História". Esse botão continua só onde não houve
+  // clique anterior: primeira história da sessão e volta depois de um refresh.
+  // Nenhum marco de tempo depende do botão "Ver História" (ele nunca foi ao
+  // servidor): resultAcknowledgedAt continua no clique do resultado e
+  // storyShownAt no fim do prelúdio.
+  const advancedFromResult = useRef(false);
+  const advanceToNextStory = () => {
+    advancedFromResult.current = true;
+    void acknowledgeResult();
+  };
+
   // Cada história nova recomeça o prelúdio. Se a criança já respondeu (voltou
   // depois de um refresh), pula direto para a pergunta.
   useEffect(() => {
     if (!attemptId) return;
-    setPrelude(own?.judgment ? "ready" : "intro");
+    const startDirectly = advancedFromResult.current;
+    advancedFromResult.current = false;
+    setPrelude(own?.judgment ? "ready" : startDirectly ? "dividing" : "intro");
     setPreludeAttemptId(attemptId);
     setShowLossFeedback(false);
     setJustPunished(false);
@@ -1061,7 +1077,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                     Nesta história a dupla não ganhou moedas.
                   </p>
                   <button
-                    onClick={() => void acknowledgeResult()}
+                    onClick={advanceToNextStory}
                     disabled={isSubmitting || advanceBlocked}
                     className="font-nunito font-black rounded-2xl px-5 py-2.5"
                     style={{
@@ -1121,7 +1137,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
           <GroupRewardModal
             amount={result?.culturalConsequence ?? 0}
             piggyBank={balances.groupCoins}
-            onContinue={() => void acknowledgeResult()}
+            onContinue={advanceToNextStory}
             disabled={isSubmitting || advanceBlocked}
           />
         )}
