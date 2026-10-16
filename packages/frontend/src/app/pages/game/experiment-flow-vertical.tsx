@@ -62,6 +62,38 @@ const DIVIDE_CUE_MS = 1600;
 // em que a crianca compara as duas pilhas para decidir se foi justa.
 const DIVIDED_HOLD_MS = 2200;
 
+// ── Escala da tela (F2: prioridade para notebook) ───────────────────────────
+// Os tamanhos abaixo (retratos, textos, botões) foram desenhados para um
+// notebook de 1280×600 úteis (1280×720 com a barra do navegador). Em telas maiores tudo cresce junto, na mesma
+// proporção, até UI_SCALE_MAX; em telas menores encolhe um pouco, até
+// UI_SCALE_MIN. A altura é o que mais limita (o estado mais alto — punição com
+// duas linhas de perda — ocupa ~93% de 600 px), a largura só entra em telas
+// estreitas. Os componentes leem a escala via CSS (--ui) com u(px).
+const UI_REF_HEIGHT = 600;
+const UI_REF_WIDTH = 1100;
+const UI_SCALE_MIN = 0.92;
+const UI_SCALE_MAX = 1.4;
+function computeUiScale(): number {
+  if (typeof window === "undefined") return 1;
+  const s = Math.min(window.innerHeight / UI_REF_HEIGHT, window.innerWidth / UI_REF_WIDTH);
+  return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, s));
+}
+function useUiScale(): number {
+  const [scale, setScale] = useState(computeUiScale);
+  useEffect(() => {
+    const onResize = () => setScale(computeUiScale());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return scale;
+}
+// Tamanho em px multiplicado pela escala da tela.
+const u = (px: number) => `calc(${px}px * var(--ui, 1))`;
+// Altura reservada para a área de ação (pergunta, botões, avisos), igual à do
+// estado mais alto: pergunta + botões + duas linhas de perda. Com a altura fixa,
+// o bloco dos personagens não muda de lugar quando a tela troca de estado.
+const ACTION_AREA_MIN_H = 240;
+
 // Pares fora da tabela de disposição: avisa uma vez por par, não a cada render.
 const warnedUnknownPairs = new Set<string>();
 function warnUnknownPair(distributor: string, receptor: string) {
@@ -437,7 +469,7 @@ function DecisionCard({
       {topButton}
 
       <div className="rounded-2xl px-6 py-4" style={{ backgroundColor: "#F2F2F2", border: "2px solid #E0E0E0" }}>
-        <p className="font-nunito font-black text-center leading-snug" style={{ fontSize: 22, color: "#3C3C3C" }}>
+        <p className="font-nunito font-black text-center leading-snug" style={{ fontSize: u(23), color: "#3C3C3C" }}>
           {question}
         </p>
       </div>
@@ -460,12 +492,12 @@ function DecisionCard({
                 border: `2px solid ${btn.border}`,
                 borderBottom: `4px solid ${btn.border}`,
                 borderRadius: 12,
-                padding: "11px 8px",
-                fontSize: 14,
+                padding: `${u(12)} 8px`,
+                fontSize: u(19),
                 opacity,
                 cursor: locked ? "default" : "pointer",
                 transition: "opacity 0.2s",
-                minHeight: 44,
+                minHeight: u(54),
               }}
             >
               {btn.label}
@@ -489,7 +521,7 @@ function DecisionCard({
               <circle cx="6" cy="4.5" r="2.8" fill="#AFA99A" />
               <path d="M0.5 12.5 Q0.5 8.5 6 8.5 Q11.5 8.5 11.5 12.5" stroke="#AFA99A" strokeWidth="1.3" fill="none" strokeLinecap="round" />
             </svg>
-            <span className="font-nunito font-bold" style={{ fontSize: 10, color: "#AFA99A" }}>
+            <span className="font-nunito font-bold" style={{ fontSize: u(14), color: "#AFA99A" }}>
               {partnerName} respondendo
             </span>
             <div className="flex gap-0.5">
@@ -523,7 +555,7 @@ function LossRow({ msg, delay = 0 }: { msg: string; delay?: number }) {
         <path d="M12 7v5" stroke="#CC0000" strokeWidth="2.5" strokeLinecap="round" />
         <circle cx="12" cy="16.5" r="1.2" fill="#CC0000" />
       </svg>
-      <span className="font-nunito font-black" style={{ fontSize: 17, color: "#CC0000" }}>
+      <span className="font-nunito font-black" style={{ fontSize: u(18), color: "#CC0000" }}>
         {msg}
       </span>
     </motion.div>
@@ -563,13 +595,13 @@ function GroupRewardModal({ amount, piggyBank, onContinue, disabled = false }: {
         exit={{ scale: 0.92, opacity: 0 }}
         transition={{ type: "spring", stiffness: 280, damping: 22 }}
         className="rounded-3xl flex flex-col items-center text-center gap-4 px-8 py-7"
-        style={{ width: "100%", maxWidth: 360, backgroundColor: "#58CC02", boxShadow: "0 6px 0 #3A9200" }}
+        style={{ width: "100%", maxWidth: u(380), backgroundColor: "#58CC02", boxShadow: "0 6px 0 #3A9200" }}
       >
         <motion.div
           initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }}
           transition={{ delay: 0.1, type: "spring", stiffness: 240, damping: 14 }}
         >
-          <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <svg viewBox="0 0 64 64" fill="none" style={{ width: u(64), height: u(64) }}>
             <path d="M20 8 H44 V34 Q44 54 32 56 Q20 54 20 34 Z" fill="#F5C400" stroke="#CE9200" strokeWidth="2.5" strokeLinejoin="round" />
             <path d="M8 10 Q8 28 20 33" stroke="#CE9200" strokeWidth="3" strokeLinecap="round" fill="none" />
             <path d="M56 10 Q56 28 44 33" stroke="#CE9200" strokeWidth="3" strokeLinecap="round" fill="none" />
@@ -580,7 +612,7 @@ function GroupRewardModal({ amount, piggyBank, onContinue, disabled = false }: {
 
         <motion.p
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-          className="font-nunito font-black text-white" style={{ fontSize: 22, lineHeight: 1.3 }}
+          className="font-nunito font-black text-white" style={{ fontSize: u(24), lineHeight: 1.3 }}
         >
           Vocês ganharam moedas! +{amount}
         </motion.p>
@@ -592,7 +624,7 @@ function GroupRewardModal({ amount, piggyBank, onContinue, disabled = false }: {
           {Array.from({ length: amount }, (_, i) => (
             <motion.div key={i} initial={{ scale: 0 }} animate={{ scale: 1 }}
               transition={{ delay: 0.42 + i * 0.1, type: "spring" }}>
-              <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: "#FFD900", border: "2px solid #CE9200" }} />
+              <div style={{ width: u(32), height: u(32), borderRadius: "50%", backgroundColor: "#FFD900", border: "2px solid #CE9200" }} />
             </motion.div>
           ))}
         </motion.div>
@@ -601,14 +633,14 @@ function GroupRewardModal({ amount, piggyBank, onContinue, disabled = false }: {
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
           className="rounded-2xl px-6 py-2.5" style={{ backgroundColor: "white" }}
         >
-          <p className="font-nunito font-bold" style={{ color: "#1CB0F6", fontSize: 14 }}>
+          <p className="font-nunito font-bold" style={{ color: "#1CB0F6", fontSize: u(16) }}>
             Cofrinho da dupla: {piggyBank}
           </p>
         </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.75 }}
-          style={{ width: "100%", maxWidth: 280 }}
+          style={{ width: "100%", maxWidth: u(300) }}
         >
           <button
             onClick={onContinue}
@@ -616,7 +648,7 @@ function GroupRewardModal({ amount, piggyBank, onContinue, disabled = false }: {
             className="w-full font-nunito font-black rounded-2xl py-3"
             style={{
               backgroundColor: "#FFD900", color: "#7A5800",
-              border: "2px solid #CE9200", borderBottom: "4px solid #CE9200", fontSize: 15,
+              border: "2px solid #CE9200", borderBottom: "4px solid #CE9200", fontSize: u(18),
               opacity: disabled ? 0.6 : 1,
             }}
           >
@@ -655,6 +687,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     refresh, submitJudgment, submitPunishment, acknowledgeResult,
     markStoryShown, markNextStoryAvailable,
   } = useParticipantState(token);
+  const ui = useUiScale();
 
   const [lang, setLangState] = useState<Lang>(() => getLang(undefined));
   const T = translations[lang];
@@ -876,7 +909,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     : null;
 
   return (
-    <div className="h-full flex flex-col relative" style={{ backgroundColor: "#F5F2EB" }}>
+    <div className="h-full flex flex-col relative" style={{ backgroundColor: "#F5F2EB", ["--ui" as string]: ui }}>
 
       <PiggyBankCounter count={balances.groupCoins} label={T.together} />
 
@@ -884,7 +917,14 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
 
         <SidebarCoins count={balances.ownCoins} label="VOCÊ" flash={coinLostFlash} align="left" />
 
-        <div className="flex-1 flex flex-col min-h-0 px-10 pt-7 pb-4 gap-3">
+        {/* Coluna central com largura máxima: em tela larga os botões não esticam
+            de borda a borda, e a história fica no centro do campo de visão. */}
+        <div
+          className="flex-1 flex flex-col min-h-0 px-10 pt-7 pb-4 gap-3 w-full mx-auto"
+          // "safe center": centraliza quando sobra altura e volta a alinhar no
+          // topo se um dia a tela for baixa demais, sem cortar o personagem.
+          style={{ maxWidth: u(1000), justifyContent: "safe center" }}
+        >
 
           {/* Character block — escondido na tela de abertura */}
           {prelude !== "intro" && (
@@ -901,7 +941,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   coinA={displayCoinA}
                   coinB={displayCoinB}
                   distributorIsA={distributorIsA}
-                  circleSize={144}
+                  circleSize={Math.round(144 * ui)}
                   bubble={distributorBubble}
                   transferring={prelude === "transferring"}
                   transferCount={attempt.receptorDistribution}
@@ -911,7 +951,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
           )}
 
           {/* Action area */}
-          <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex flex-col flex-shrink-0" style={{ minHeight: u(ACTION_AREA_MIN_H) }}>
             <AnimatePresence mode="wait">
 
               {prelude === "intro" && (
@@ -921,7 +961,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   className="h-full flex items-center justify-center"
                 >
                   <GameButton variant="primary" size="lg" onClick={() => setPrelude("dividing")} className="shadow-lg px-8">
-                    <span className="flex items-center gap-2 text-lg">
+                    <span className="flex items-center gap-2" style={{ fontSize: u(20) }}>
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                         <path d="M8 5l8 7-8 7V5z" fill="currentColor" />
                       </svg>
@@ -938,10 +978,10 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   className="flex items-center justify-center pt-1"
                 >
                   <div
-                    className="font-nunito font-black rounded-2xl px-5 py-2 select-none"
+                    className="font-nunito font-black rounded-2xl select-none"
                     style={{
-                      backgroundColor: "#FFD900", color: "#7A5800",
-                      border: "2px solid #CE9200", borderBottom: "3px solid #CE9200", fontSize: 13,
+                      backgroundColor: "#FFD900", color: "#7A5800", padding: `${u(8)} ${u(22)}`,
+                      border: "2px solid #CE9200", borderBottom: "3px solid #CE9200", fontSize: u(17),
                     }}
                   >
                     Hora de Dividir
@@ -955,7 +995,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   className="flex items-center justify-center"
                 >
-                  <span className="font-nunito font-bold" style={{ fontSize: 12, color: "#AFA99A" }}>
+                  <span className="font-nunito font-bold" style={{ fontSize: u(15), color: "#AFA99A" }}>
                     Dividindo...
                   </span>
                 </motion.div>
@@ -974,7 +1014,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                       animate={{ opacity: [0.4, 1, 0.4] }}
                       transition={{ duration: 0.8, repeat: Infinity }}
                     />
-                    <span className="font-nunito font-bold" style={{ fontSize: 12, color: "#AFA99A" }}>
+                    <span className="font-nunito font-bold" style={{ fontSize: u(15), color: "#AFA99A" }}>
                       Moedas distribuídas...
                     </span>
                   </div>
@@ -999,10 +1039,10 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                       <div className="flex justify-center">
                         <button
                           onClick={() => setPrelude("dividing")}
-                          className="font-nunito font-black rounded-2xl px-4 py-1.5"
+                          className="font-nunito font-black rounded-2xl"
                           style={{
-                            backgroundColor: "#FFD900", color: "#7A5800",
-                            border: "2px solid #CE9200", borderBottom: "3px solid #CE9200", fontSize: 12,
+                            backgroundColor: "#FFD900", color: "#7A5800", padding: `${u(6)} ${u(18)}`,
+                            border: "2px solid #CE9200", borderBottom: "3px solid #CE9200", fontSize: u(15),
                           }}
                         >
                           Repetir história
@@ -1057,16 +1097,16 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   className="flex flex-col items-center justify-center gap-3 flex-1"
                 >
-                  <p className="font-nunito font-bold text-center" style={{ fontSize: 13, color: "#8B8B8B" }}>
+                  <p className="font-nunito font-bold text-center" style={{ fontSize: u(16), color: "#8B8B8B" }}>
                     Nesta história a dupla não ganhou moedas.
                   </p>
                   <button
                     onClick={() => void acknowledgeResult()}
                     disabled={isSubmitting || advanceBlocked}
-                    className="font-nunito font-black rounded-2xl px-5 py-2.5"
+                    className="font-nunito font-black rounded-2xl"
                     style={{
-                      backgroundColor: "#FFD900", color: "#7A5800",
-                      border: "2px solid #CE9200", borderBottom: "4px solid #CE9200", fontSize: 13,
+                      backgroundColor: "#FFD900", color: "#7A5800", padding: `${u(12)} ${u(30)}`,
+                      border: "2px solid #CE9200", borderBottom: "4px solid #CE9200", fontSize: u(18),
                       opacity: isSubmitting || advanceBlocked ? 0.6 : 1,
                     }}
                   >
@@ -1081,7 +1121,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   className="flex flex-col items-center justify-center gap-2 flex-1"
                 >
-                  <span className="font-nunito font-bold" style={{ fontSize: 12, color: "#AFA99A" }}>
+                  <span className="font-nunito font-bold" style={{ fontSize: u(15), color: "#AFA99A" }}>
                     Esperando {partnerName} ver o resultado
                   </span>
                   <div className="flex gap-1">
