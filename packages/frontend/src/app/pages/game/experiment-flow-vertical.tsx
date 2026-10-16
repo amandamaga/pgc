@@ -911,13 +911,22 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   const judged = own?.judgment ?? null;
   const punished = own?.punishment ?? null;
 
+  // O reset do prelúdio para uma história nova roda num efeito, ou seja, DEPOIS
+  // do primeiro render com a tentativa nova. Nesse render o `prelude` ainda é o
+  // "ready" da história anterior, e a pergunta "justa ou injusta" aparecia por
+  // um instante antes de "Hora de Dividir". A tela usa o estado que o efeito
+  // vai aplicar, para não piscar.
+  const shownPrelude: Prelude = preludeAttemptId === attemptId
+    ? prelude
+    : own?.judgment ? "ready" : advancedFromResult.current ? "dividing" : "intro";
+
   let distributorCoins = attempt.distributorDistribution;
   let receptorCoins = attempt.receptorDistribution;
-  if (prelude === "intro") {
+  if (shownPrelude === "intro") {
     distributorCoins = 0; receptorCoins = 0;
-  } else if (prelude === "dividing") {
+  } else if (shownPrelude === "dividing") {
     distributorCoins = total; receptorCoins = 0;
-  } else if (prelude === "transferring") {
+  } else if (shownPrelude === "transferring") {
     // O distribuidor ja fica com a parte dele; as que faltam estao voando.
     distributorCoins = attempt.distributorDistribution; receptorCoins = 0;
   } else if (result?.distributorResult) {
@@ -951,7 +960,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
         >
 
           {/* Character block — escondido na tela de abertura */}
-          {prelude !== "intro" && (
+          {shownPrelude !== "intro" && (
             <div className="flex flex-col items-center gap-1 flex-shrink-0">
               <motion.div
                 initial={{ opacity: 0, y: -8 }}
@@ -967,7 +976,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   distributorIsA={distributorIsA}
                   circleSize={Math.round(144 * ui)}
                   bubble={distributorBubble}
-                  transferring={prelude === "transferring"}
+                  transferring={shownPrelude === "transferring"}
                   transferCount={attempt.receptorDistribution}
                 />
               </motion.div>
@@ -978,7 +987,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
           <div className="flex flex-col flex-shrink-0" style={{ minHeight: u(ACTION_AREA_MIN_H) }}>
             <AnimatePresence mode="wait">
 
-              {prelude === "intro" && (
+              {shownPrelude === "intro" && (
                 <motion.div
                   key="intro"
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -995,7 +1004,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                 </motion.div>
               )}
 
-              {prelude === "dividing" && (
+              {shownPrelude === "dividing" && (
                 <motion.div
                   key="hora-dividir"
                   initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -1013,7 +1022,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                 </motion.div>
               )}
 
-              {prelude === "transferring" && (
+              {shownPrelude === "transferring" && (
                 <motion.div
                   key="transferindo"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1025,7 +1034,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                 </motion.div>
               )}
 
-              {prelude === "divided" && (
+              {shownPrelude === "divided" && (
                 <motion.div
                   key="dist-after"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1045,7 +1054,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                 </motion.div>
               )}
 
-              {prelude === "ready" && (stage === "JUDGMENT" || stage === "WAITING_JUDGMENT_PARTNER") && (
+              {shownPrelude === "ready" && (stage === "JUDGMENT" || stage === "WAITING_JUDGMENT_PARTNER") && (
                 <DecisionCard
                   key="justice"
                   question={T.justiceQuestion}
@@ -1077,7 +1086,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                 />
               )}
 
-              {prelude === "ready"
+              {shownPrelude === "ready"
                 && (stage === "PUNISHMENT" || stage === "WAITING_PUNISHMENT_PARTNER"
                     || (stage === "RESULT" && showLossFeedback && lossMessages.length > 0)) && (
                 <motion.div
