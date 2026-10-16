@@ -59,11 +59,10 @@ export interface PartnerInfo {
   punishment: "Punish" | "NoPunish" | null;
   hasAck: boolean;
   coinsAfter: number | null;
-  // Segundos desde a última vez que o parceiro buscou o próprio estado,
-  // calculado no servidor. Null se o parceiro nunca foi visto. Não é um
-  // heartbeat: cresce normalmente durante o turno do parceiro (quando ele
-  // não está numa etapa de espera e por isso não faz polling) — só deve ser
-  // usado com uma janela de tolerância longa (60-90s) para detectar desconexão.
+  // Segundos desde o último sinal de presença do parceiro (consulta de estado
+  // ou heartbeat), calculado no servidor. Null se o parceiro nunca foi visto.
+  // Com o heartbeat ativo em todas as telas (HEARTBEAT_INTERVAL_MS), fica
+  // abaixo desse intervalo enquanto o parceiro está com o jogo aberto.
   secondsSinceSeen: number | null;
 }
 
@@ -118,9 +117,22 @@ export function createParticipantClient(token: string) {
     if (data.stage === "RESULT" && !data.trialResult) throw new Error("O servidor não informou o resultado.");
     return data;
   }
+  // Heartbeat de presença: só marca "estou aqui" (lastSeenAt) e não devolve
+  // estado (204). Fica fora do `request` porque não há ParticipantState para
+  // validar, e a tela não deve mudar por causa dele.
+  async function heartbeat(signal?: AbortSignal): Promise<void> {
+    const base = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, "");
+    if (!token || !base) return;
+    const response = await fetch(base + "/participant/heartbeat", {
+      signal, cache: "no-store", method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new ApiError(response.status, "Falha no sinal de presença.");
+  }
   const attemptPath = (id: string) => `/participant/attempts/${encodeURIComponent(id)}`;
   return {
     getMe: (signal?: AbortSignal) => request("/participant/me", signal),
+    postHeartbeat: heartbeat,
     postJudgment: (id: string, judgment: "Just" | "Unjust", signal?: AbortSignal) => request(attemptPath(id) + "/judgment", signal, { judgment }),
     postPunishment: (id: string, punishment: "Punish" | "NoPunish", signal?: AbortSignal) => request(attemptPath(id) + "/punishment", signal, { punishment }),
     postAcknowledge: (id: string, signal?: AbortSignal) => request(attemptPath(id) + "/result/acknowledge", signal, {}),
@@ -130,5 +142,10 @@ export function createParticipantClient(token: string) {
     postNextStoryAvailable: (id: string, signal?: AbortSignal) => request(attemptPath(id) + "/next-story-available", signal, {}),
   };
 }
+// Intervalo do heartbeat de presença, enviado em TODAS as telas (inclusive no
+// próprio turno, quando não há polling de estado). Precisa ficar bem abaixo do
+// limite de desconexão da tela para não gerar falso aviso.
+export const HEARTBEAT_INTERVAL_MS = 10_000;
+
 export const WAITING_STAGES: Stage[] = ["WAITING_SESSION", "WAITING_JUDGMENT_PARTNER", "WAITING_PUNISHMENT_PARTNER", "WAITING_RESULT_PARTNER"];
 const STAGES: Stage[] = [...WAITING_STAGES, "JUDGMENT", "PUNISHMENT", "RESULT", "COMPLETED"];
