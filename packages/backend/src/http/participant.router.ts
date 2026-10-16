@@ -1,12 +1,12 @@
 /**
  * participant.router.ts
- * Endpoints do participante: acesso, respostas, ack de resultado e marcos
- * de tempo da tentativa (story-shown, next-story-available).
+ * Endpoints do participante: acesso, heartbeat de presença, respostas, ack de
+ * resultado e marcos de tempo da tentativa (story-shown, next-story-available).
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { bearerAuth } from './auth.middleware';
-import { getParticipantState } from '../services/participant.service';
+import { getParticipantState, touchParticipant } from '../services/participant.service';
 import {
   submitJudgment,
   submitPunishment,
@@ -32,6 +32,20 @@ participantRouter.get('/me', bearerAuth, async (req: Request, res: Response, nex
   try {
     const state = await getParticipantState(req.accessToken!);
     res.status(200).json(state);
+  } catch (err) {
+    if (err instanceof SessionBootstrapError) { res.status(401).json({ error: err.message }); return; }
+    next(err);
+  }
+});
+
+// POST /participant/heartbeat
+// Sem body. Atualiza só o lastSeenAt (presença) e responde 204, em qualquer
+// estágio. Não lê nem devolve estado — o front chama em intervalo fixo em
+// todas as telas sem interferir no que está na tela.
+participantRouter.post('/heartbeat', bearerAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await touchParticipant(req.accessToken!);
+    res.status(204).end();
   } catch (err) {
     if (err instanceof SessionBootstrapError) { res.status(401).json({ error: err.message }); return; }
     next(err);

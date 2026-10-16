@@ -84,12 +84,11 @@ export type PartnerView = {
    * (lastSeenAt), calculados no servidor para não depender do relógio do
    * dispositivo do participante. Null se o parceiro nunca foi visto.
    *
-   * Isto NÃO é um heartbeat: o parceiro só é "visto" quando busca o próprio
-   * estado, o que só acontece automaticamente enquanto ele está numa etapa de
-   * espera (ver WAITING_STAGES no front). Durante o próprio turno do parceiro
-   * (julgando/punindo), esse valor cresce normalmente — é esperado que passe
-   * dezenas de segundos sem atualização. O consumidor deve usar uma janela de
-   * tolerância longa (60-90s) antes de considerar o parceiro desconectado.
+   * lastSeenAt é atualizado por qualquer consulta de estado (getParticipantState)
+   * e pelo heartbeat (touchParticipant, POST /participant/heartbeat), que o
+   * front envia em todas as telas. Com o heartbeat ativo, este valor fica
+   * abaixo do intervalo de envio enquanto o parceiro está com a página aberta;
+   * o limite para considerar o parceiro desconectado é decidido no front.
    */
   secondsSinceSeen: number | null;
 };
@@ -195,6 +194,35 @@ async function loadActiveAttemptForParticipant(sessionId: string, participantId:
   });
 
   return attempt;
+}
+
+// ---------------------------------------------------------------------------
+// touchParticipant (heartbeat)
+// ---------------------------------------------------------------------------
+
+/**
+ * Marca o participante como presente agora (lastSeenAt) sem ler nem devolver
+ * o estado da sessão. É o heartbeat que o front envia em TODAS as telas —
+ * inclusive durante o próprio turno (julgando/punindo), quando ele não faz
+ * polling de estado — para que o parceiro não veja falso aviso de desconexão.
+ *
+ * Uma única escrita, independente do estágio. Não mexe em joinedAt: o
+ * primeiro acesso sempre passa por getParticipantState (GET /participant/me),
+ * que é quem preenche esse campo.
+ *
+ * Lança SessionBootstrapError se o token não pertencer a nenhum participante.
+ */
+export async function touchParticipant(accessToken: string): Promise<void> {
+  const now = new Date();
+
+  const touched = await prisma.sessionParticipant.updateMany({
+    where: { accessToken },
+    data:  { lastSeenAt: now },
+  });
+
+  if (touched.count === 0) {
+    throw new SessionBootstrapError('Token inválido ou participante não encontrado.');
+  }
 }
 
 // ---------------------------------------------------------------------------
