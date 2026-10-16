@@ -8,6 +8,7 @@ import { PiggyBankCounter } from "../../components/game/piggy-bank-counter";
 import { motion, AnimatePresence } from "motion/react";
 import { useGameSounds } from "../../hooks/use-game-sounds";
 import { useParticipantState } from "../../hooks/use-participant-state";
+import { AUTO_SCREEN_MS } from "../../lib/game-timing";
 
 const SIDEBAR_W = 120;
 
@@ -29,11 +30,9 @@ const PUNISH_COST_TO_SELF = 1;
 // dividir" um dos personagens segura o endowment inteiro (ate 32).
 const PILE_MAX_DOTS = 32;
 
-// Tempo de leitura do aviso de perdas: um piso para a crianca registrar que
-// algo mudou, mais uma folga por linha. Duas perdas nao se leem no mesmo tempo
-// que uma.
-const LOSS_READ_BASE_MS = 5000;
-const LOSS_READ_PER_LINE_MS = 2800;
+// Tempo de leitura do aviso de perdas: AUTO_SCREEN_MS por linha (F2). Duas
+// perdas nao se leem no mesmo tempo que uma. Antes: 5000 ms + 2800 ms/linha.
+const LOSS_READ_PER_LINE_MS = AUTO_SCREEN_MS;
 // As linhas entram uma de cada vez, com pausa suficiente para a primeira ser
 // lida antes da segunda aparecer.
 const LOSS_LINE_STAGGER_S = 0.5;
@@ -45,22 +44,23 @@ const PARTNER_PRESENT_THRESHOLD_SECONDS = 20;
 type Prelude = "intro" | "dividing" | "transferring" | "divided" | "ready";
 
 // ── Ritmo da historia ─────────────────────────────────────────────────────────
-// Todos os tempos automaticos do ensaio ficam juntos aqui. O publico tem 8-11
-// anos e nao controla o avanco destas etapas, entao o ritmo e deliberadamente
-// lento: e melhor a crianca esperar um pouco do que perder o que aconteceu.
+// Todos os tempos automaticos do ensaio derivam de AUTO_SCREEN_MS
+// (lib/game-timing.ts, 3 s na F2). O publico tem 8-11 anos e nao controla o
+// avanco destas etapas: cada uma fica o mesmo tempo na tela.
 //
-// Duracao do voo de cada moeda e do escalonamento entre elas. O total nunca
-// passa de COIN_FLIGHT_MS + COIN_FLIGHT_SPREAD_MS, independente de quantas
-// moedas o distribuidor passou.
-const COIN_FLIGHT_MS = 750;
-const COIN_FLIGHT_SPREAD_MS = 700;
-const COIN_TRANSFER_MS = COIN_FLIGHT_MS + COIN_FLIGHT_SPREAD_MS + 250;
 // Tempo que "Hora de Dividir" fica na tela antes das moedas sairem: a crianca
 // precisa ler o aviso, mas nao precisa clicar em nada para a divisao acontecer.
-const DIVIDE_CUE_MS = 1600;
-// Pausa com a divisao ja feita, antes da primeira pergunta aparecer: e o momento
-// em que a crianca compara as duas pilhas para decidir se foi justa.
-const DIVIDED_HOLD_MS = 2200;
+const DIVIDE_CUE_MS = AUTO_SCREEN_MS;
+// Etapa das moedas voando. O voo ocupa a etapa: cada moeda leva COIN_FLIGHT_MS
+// e as saidas se espalham por COIN_FLIGHT_SPREAD_MS, terminando com uma folga
+// antes da proxima etapa, independente de quantas moedas o distribuidor passou.
+const COIN_TRANSFER_MS = AUTO_SCREEN_MS;
+const COIN_LANDING_SLACK_MS = 250;
+const COIN_FLIGHT_MS = Math.min(1000, Math.round(COIN_TRANSFER_MS * 0.4));
+const COIN_FLIGHT_SPREAD_MS = Math.max(0, COIN_TRANSFER_MS - COIN_FLIGHT_MS - COIN_LANDING_SLACK_MS);
+// Pausa com a divisao ja feita ("Moedas distribuidas..."), antes da primeira
+// pergunta: e o momento em que a crianca compara as duas pilhas.
+const DIVIDED_HOLD_MS = AUTO_SCREEN_MS;
 
 // Pares fora da tabela de disposição: avisa uma vez por par, não a cada render.
 const warnedUnknownPairs = new Set<string>();
@@ -766,7 +766,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     const t = setTimeout(() => {
       setShowLossFeedback(false);
       setLossFeedbackDoneFor(attemptId);
-    }, LOSS_READ_BASE_MS + LOSS_READ_PER_LINE_MS * lossLineCount);
+    }, LOSS_READ_PER_LINE_MS * lossLineCount);
     return () => clearTimeout(t);
   }, [stage, anyoneLostCoins, lossLineCount, attemptId]);
 
