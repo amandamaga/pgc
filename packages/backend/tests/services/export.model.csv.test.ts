@@ -6,6 +6,9 @@
 import { describe, expect, it } from 'vitest';
 import { serializeModelExportCsv, MODEL_COLUMNS } from '../../src/services/export.model.csv';
 import type { ExportRow } from '../../src/domain/export.contract';
+import type { Culturant, SessionState } from '../../src/domain/experiment.types';
+import { resolveTrial, shouldAwardCulturalConsequence } from '../../src/domain/experiment.rules';
+import { REAL_SESSION } from '../fixtures/real-session.reference';
 
 // ---------------------------------------------------------------------------
 // Fixture
@@ -286,84 +289,77 @@ describe('serializeModelExportCsv — APtype', () => {
     expect(f[22]).toBe('');
   });
 
-  it('A + Cp → APa', () => {
-    const f = fields(serializeModelExportCsv([makeRow({ condition: 'A', blockNumber: 1, culturant: 'Cp' })]));
-    expect(f[22]).toBe('APa');
+  // Matriz completa nos rótulos do sistema (classifyCulturant):
+  //   Bp = punir igual · Cnp = não punir igual · Cp = punir desigual · Bnp = não punir desigual
+  // Espelha CULTURAL_CONSEQUENCE_MATRIX: consenso que gera CC → APa/APb/APc; senão APd.
+  const cases: Array<[condition: 'A' | 'B' | 'C', block: number, culturant: Culturant, expected: string]> = [
+    ['A', 1, 'Bp',  'APa'], ['A', 1, 'Bnp', 'APa'], ['A', 1, 'Cp',  'APa'], ['A', 1, 'Cnp', 'APa'], ['A', 1, 'D', 'D'],
+    ['A', 3, 'Bp',  'APa'], ['A', 3, 'Bnp', 'APa'], ['A', 3, 'Cp',  'APa'], ['A', 3, 'Cnp', 'APa'], ['A', 3, 'D', 'D'],
+    ['B', 2, 'Bp',  'APb'], ['B', 2, 'Bnp', 'APb'], ['B', 2, 'Cp',  'APd'], ['B', 2, 'Cnp', 'APd'], ['B', 2, 'D', 'APd'],
+    ['C', 4, 'Bp',  'APd'], ['C', 4, 'Bnp', 'APd'], ['C', 4, 'Cp',  'APc'], ['C', 4, 'Cnp', 'APc'], ['C', 4, 'D', 'APd'],
+  ];
+
+  it.each(cases)('%s (bloco %i) + %s → %s', (condition, blockNumber, culturant, expected) => {
+    const f = fields(serializeModelExportCsv([makeRow({ condition, blockNumber, culturant })]));
+    expect(f[22]).toBe(expected);
   });
 
-  it('A + Cnp → APa', () => {
-    const f = fields(serializeModelExportCsv([makeRow({ condition: 'A', blockNumber: 1, culturant: 'Cnp' })]));
-    expect(f[22]).toBe('APa');
+  it('APtype é APa/APb/APc exatamente quando há consequência cultural', () => {
+    for (const [condition, blockNumber, culturant] of cases) {
+      if (culturant === 'D') continue;
+      const f = fields(serializeModelExportCsv([makeRow({ condition, blockNumber, culturant })]));
+      const awarded = shouldAwardCulturalConsequence(condition, culturant);
+      expect(f[22] !== 'APd').toBe(awarded);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// APtype — regressão com a sessão real G1P1 (24.10.2024)
+// Esperado: coluna APtype da aba G1P1 de G1_P1_24.10.2024_3.xlsx, na ordem das
+// 64 tentativas de REAL_SESSION (ordem conferida tentativa a tentativa).
+// ---------------------------------------------------------------------------
+
+const G1P1_APTYPE = [
+  // Bloco 1 — A
+  'D', 'APa', 'APa', 'APa', 'APa', 'APa', 'D', 'APa', 'D', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'D',
+  // Bloco 2 — B
+  'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd',
+  // Bloco 3 — Aa
+  'APa', 'APa', 'D', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa',
+  // Bloco 4 — C
+  'APc', 'APd', 'APc', 'APc', 'APc', 'APc', 'APc', 'APc', 'APd', 'APc', 'APc', 'APc', 'APc', 'APc', 'APc', 'APd',
+];
+
+describe('serializeModelExportCsv — APtype na sessão real G1P1', () => {
+  let state: SessionState = { p1Coins: 80, p2Coins: 80, groupCoins: 0, disagreementCount: 0 };
+  const rows: ExportRow[] = REAL_SESSION.map((fx, i) => {
+    const { result, nextState } = resolveTrial(fx.input.condition, fx.input.stimulus, fx.input.responses, state);
+    state = nextState;
+    return makeRow({
+      globalNumber: i + 1,
+      blockNumber: fx.input.block,
+      trialInBlock: fx.input.trialInBlock,
+      condition: fx.input.condition,
+      endowment: fx.input.stimulus.endowment,
+      distributorDistribution: fx.input.stimulus.distributorDistribution,
+      receptorDistribution: fx.input.stimulus.receptorDistribution,
+      culturant: result.culturant,
+    });
+  });
+  const csvLines = serializeModelExportCsv(rows).split('\n').slice(1);
+
+  it('fixture e esperado têm 64 tentativas', () => {
+    expect(REAL_SESSION).toHaveLength(64);
+    expect(G1P1_APTYPE).toHaveLength(64);
   });
 
-  it('A + D → D', () => {
-    const f = fields(serializeModelExportCsv([makeRow({ condition: 'A', blockNumber: 1, culturant: 'D' })]));
-    expect(f[22]).toBe('D');
-  });
-
-  it('Aa (A bloco 3) + Cp → APa', () => {
-    const f = fields(serializeModelExportCsv([makeRow({ condition: 'A', blockNumber: 3, culturant: 'Cp' })]));
-    expect(f[22]).toBe('APa');
-  });
-
-  it('B + U + Cnp → APb', () => {
-    const f = fields(serializeModelExportCsv([makeRow({
-      condition: 'B', blockNumber: 2,
-      distributorDistribution: 12, receptorDistribution: 4, // U
-      culturant: 'Cnp',
-    })]));
-    expect(f[22]).toBe('APb');
-  });
-
-  it('B + E + Cp → APb', () => {
-    const f = fields(serializeModelExportCsv([makeRow({
-      condition: 'B', blockNumber: 2,
-      distributorDistribution: 6, receptorDistribution: 6, // E
-      culturant: 'Cp',
-    })]));
-    expect(f[22]).toBe('APb');
-  });
-
-  it('B + D → APd', () => {
-    const f = fields(serializeModelExportCsv([makeRow({
-      condition: 'B', blockNumber: 2, culturant: 'D',
-    })]));
-    expect(f[22]).toBe('APd');
-  });
-
-  it('B + U + Cp → APd (não é APb)', () => {
-    const f = fields(serializeModelExportCsv([makeRow({
-      condition: 'B', blockNumber: 2,
-      distributorDistribution: 12, receptorDistribution: 4, // U
-      culturant: 'Cp',
-    })]));
-    expect(f[22]).toBe('APd');
-  });
-
-  it('C + E + Cnp → APc', () => {
-    const f = fields(serializeModelExportCsv([makeRow({
-      condition: 'C', blockNumber: 4,
-      distributorDistribution: 6, receptorDistribution: 6, // E
-      culturant: 'Cnp',
-    })]));
-    expect(f[22]).toBe('APc');
-  });
-
-  it('C + U + Cp → APc', () => {
-    const f = fields(serializeModelExportCsv([makeRow({
-      condition: 'C', blockNumber: 4,
-      distributorDistribution: 12, receptorDistribution: 4, // U
-      culturant: 'Cp',
-    })]));
-    expect(f[22]).toBe('APc');
-  });
-
-  it('C + D → APd', () => {
-    const f = fields(serializeModelExportCsv([makeRow({
-      condition: 'C', blockNumber: 4, culturant: 'D',
-    })]));
-    expect(f[22]).toBe('APd');
-  });
+  it.each(G1P1_APTYPE.map((ap, i) => [i + 1, ap] as const))(
+    'tentativa %i → %s',
+    (n, expected) => {
+      expect(csvLines[n - 1].split(',')[22]).toBe(expected);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
