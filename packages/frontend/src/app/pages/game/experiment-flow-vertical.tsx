@@ -12,11 +12,19 @@ import { AUTO_SCREEN_MS } from "../../lib/game-timing";
 
 const SIDEBAR_W = 120;
 
-// Janela de tolerância para considerar o parceiro desconectado. secondsSinceSeen
-// cresce normalmente durante o turno do parceiro (sem polling nesse momento), então
-// um valor curto geraria falsos alarmes só porque a criança está pensando na
-// resposta. 75s é o meio da janela de 60-90s combinada para este fluxo.
+// Janela de tolerância para considerar o parceiro desconectado. Com o heartbeat
+// em todas as telas (HEARTBEAT_INTERVAL_MS = 10 s), secondsSinceSeen não passa
+// de ~10 s enquanto o parceiro está com o jogo aberto. O valor ainda é o antigo
+// (75 s) de propósito: só deve cair para ~45 s depois que este front, com o
+// heartbeat, estiver no ar e testado com dois navegadores.
 const PARTNER_DISCONNECT_THRESHOLD_SECONDS = 75;
+
+// Aviso de desconexão do parceiro. Proposta de texto (F2) — confirmar com a
+// Luiza. Antes: "{nome} pode ter se desconectado" / "Sem notícias há um tempo.
+// Isso volta sozinho assim que a conexão for reestabelecida."
+const partnerAwayTitle = (name: string) => `Esperando ${name} voltar`;
+const partnerAwayBody = (name: string) =>
+  `Parece que ${name} saiu do jogo. Quando voltar, o jogo continua sozinho. Se demorar, chame a pesquisadora.`;
 
 // "1 moedas" aparecia em toda punicao simples; a crianca le esse texto varias
 // dezenas de vezes por sessao, entao vale concordar o plural.
@@ -36,7 +44,8 @@ const LOSS_READ_PER_LINE_MS = AUTO_SCREEN_MS;
 // As linhas entram uma de cada vez, com pausa suficiente para a primeira ser
 // lida antes da segunda aparecer.
 const LOSS_LINE_STAGGER_S = 0.5;
-// Polling e de ~2s: 20s de folga significa "esta aqui agora".
+// Sinal de presenca chega a cada ~1 s nas telas de espera e a cada 10 s
+// (heartbeat) nas demais: 20 s de folga significa "esta aqui agora".
 const PARTNER_PRESENT_THRESHOLD_SECONDS = 20;
 
 // Prelúdio local de cada história: só animação, nada disso vai para o servidor.
@@ -701,9 +710,9 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   const partnerName = partner?.displayName ?? "seu parceiro";
   const attemptId = attempt?.id ?? null;
 
-  // "Parceiro desconectado": só faz sentido enquanto EU estou esperando por ele
-  // (ele não estaria fazendo polling durante o próprio turno de qualquer jeito).
-  // Some sozinho quando secondsSinceSeen volta a ficar abaixo da janela.
+  // "Parceiro desconectado": só aparece enquanto EU estou esperando por ele —
+  // no meu próprio turno o aviso atrapalharia a resposta sem que eu possa fazer
+  // nada. Some sozinho quando secondsSinceSeen volta a ficar abaixo da janela.
   const waitingForPartner = stage === "WAITING_JUDGMENT_PARTNER" || stage === "WAITING_PUNISHMENT_PARTNER" || stage === "WAITING_RESULT_PARTNER";
 
   // "Chegou" = fez polling agora há pouco, ou seja, já apertou COMEÇAR e está
@@ -1197,10 +1206,10 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
               </div>
               <div>
                 <h2 className="font-nunito font-black text-xl mb-1" style={{ color: "#3C3C3C" }}>
-                  {partnerName} pode ter se desconectado
+                  {partnerAwayTitle(partnerName)}
                 </h2>
                 <p className="font-nunito font-bold text-sm" style={{ color: "#8B8B8B" }}>
-                  Sem notícias há um tempo. Isso volta sozinho assim que a conexão for reestabelecida.
+                  {partnerAwayBody(partnerName)}
                 </p>
               </div>
               <div className="flex gap-2" aria-hidden>
