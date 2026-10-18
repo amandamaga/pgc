@@ -125,14 +125,22 @@ describe('sessão WAITING', () => {
     vi.mocked(prisma.sessionParticipant.findUnique).mockResolvedValue({
       ...mockSpBase, session: { ...mockSpBase.session, status: 'WAITING' },
     } as never);
+    // Nenhuma tentativa resolvida ainda: a consulta de saldos devolve null.
+    vi.mocked(prisma.attempt.findFirst).mockResolvedValue(null as never);
 
     const result = await getParticipantState('tok-abc');
 
     expect(result.stage).toBe('WAITING_SESSION');
     expect(result.currentAttempt).toBeNull();
     expect(result.trialResult).toBeNull();
-    // attempt.findFirst NÃO deve ser chamado para WAITING
-    expect(prisma.attempt.findFirst).not.toHaveBeenCalled();
+    // Em WAITING o serviço consulta attempt só para os saldos (última
+    // tentativa resolvida), nunca para carregar tentativa ativa.
+    expect(prisma.attempt.findFirst).toHaveBeenCalledTimes(1);
+    expect(prisma.attempt.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ trialRecord: { isNot: null } }) }),
+    );
+    // Sem tentativa resolvida, os saldos são os iniciais.
+    expect(result.balances).toEqual({ ownCoins: 80, partnerCoins: 80, groupCoins: 0 });
   });
 });
 
@@ -145,13 +153,20 @@ describe('sessão COMPLETED', () => {
     vi.mocked(prisma.sessionParticipant.findUnique).mockResolvedValue({
       ...mockSpBase, session: { ...mockSpBase.session, status: 'COMPLETED' },
     } as never);
+    // A tela final mostra os saldos: o serviço busca a última tentativa
+    // resolvida mesmo com a sessão encerrada.
+    vi.mocked(prisma.attempt.findFirst).mockResolvedValue({
+      trialRecord: { p1CoinsAfter: 71, p2CoinsAfter: 74, groupCoinsAfter: 12 },
+    } as never);
 
     const result = await getParticipantState('tok-abc');
 
     expect(result.stage).toBe('COMPLETED');
     expect(result.currentAttempt).toBeNull();
     expect(result.trialResult).toBeNull();
-    expect(prisma.attempt.findFirst).not.toHaveBeenCalled();
+    expect(prisma.attempt.findFirst).toHaveBeenCalledTimes(1);
+    // sp é P1: ownCoins vem de p1CoinsAfter.
+    expect(result.balances).toEqual({ ownCoins: 71, partnerCoins: 74, groupCoins: 12 });
   });
 });
 

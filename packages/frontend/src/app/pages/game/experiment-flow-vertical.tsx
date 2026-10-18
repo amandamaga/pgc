@@ -167,13 +167,21 @@ function SidebarCoins({ count, label, flash = false, align = "left", max = 80 }:
       animate={flash ? { backgroundColor: ["rgba(255,75,75,0.05)", "rgba(255,75,75,0.25)", "rgba(245,240,232,0.6)"] } : {}}
       transition={{ duration: 0.5 }}
     >
-      <div className="mb-3" aria-hidden>
+      {/* scaleY(-1) vira a grade de cabeça para baixo: a última moeda desenhada
+          fica no TOPO, então gastar uma moeda esvazia a pilha de cima para
+          baixo, como a retirada física (item 6 da Luiza, 07/10). As bolinhas
+          são círculos, então o espelhamento não muda o desenho de cada uma. */}
+      <div className="mb-3" aria-hidden style={{ transform: "scaleY(-1)" }}>
         <CoinDotGrid count={count} maxDots={max} dotSize={16} cols={4} gap={4} />
       </div>
       <span className="font-nunito font-black" style={{ fontSize: 28, color: "#58CC02", lineHeight: 1 }}>
         {count}
       </span>
-      <span className="font-nunito font-bold uppercase text-center" style={{ fontSize: 11, color: "#8A7A52", letterSpacing: 1 }}>
+      {/* "moedas" por extenso embaixo dos cofrinhos individuais (item 1). */}
+      <span className="font-nunito font-bold" style={{ fontSize: 13, color: "#8A7A52" }}>
+        {count === 1 ? "moeda" : "moedas"}
+      </span>
+      <span className="font-nunito font-bold uppercase text-center" style={{ fontSize: 13, color: "#8A7A52", letterSpacing: 1 }}>
         {label}
       </span>
     </motion.div>
@@ -303,8 +311,8 @@ function CharacterBlock({
                     zIndex: 10, whiteSpace: "nowrap", pointerEvents: "none",
                   }}
                 >
-                  <span style={{ fontSize: px(5) }}>❌</span>
-                  <span className="font-nunito font-black" style={{ fontSize: px(5), color: "#CC0000" }}>{bubble}</span>
+                  <span style={{ fontSize: px(6) }}>❌</span>
+                  <span className="font-nunito font-black" style={{ fontSize: px(7), color: "#CC0000" }}>{bubble}</span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -324,8 +332,10 @@ function CharacterBlock({
                 cols={pileCols(coinA)} gap={pileGap} />
             </div>
           </div>
-          <span className="font-nunito font-bold" style={{ fontSize: px(6), color: "#3C3C3C" }}>{nameA}</span>
-          <span className="font-nunito font-black" style={{ fontSize: px(9), color: "#58CC02", lineHeight: 1 }}
+          {/* px(6)→px(8) e px(9)→px(11): frases e números maiores sob os
+              personagens (item 3 da Luiza, 07/10). */}
+          <span className="font-nunito font-bold" style={{ fontSize: px(8), color: "#3C3C3C" }}>{nameA}</span>
+          <span className="font-nunito font-black" style={{ fontSize: px(11), color: "#58CC02", lineHeight: 1 }}
             data-testid="coin-count-left">
             {coinA}
           </span>
@@ -365,8 +375,8 @@ function CharacterBlock({
                     zIndex: 10, whiteSpace: "nowrap", pointerEvents: "none",
                   }}
                 >
-                  <span style={{ fontSize: px(5) }}>❌</span>
-                  <span className="font-nunito font-black" style={{ fontSize: px(5), color: "#CC0000" }}>{bubble}</span>
+                  <span style={{ fontSize: px(6) }}>❌</span>
+                  <span className="font-nunito font-black" style={{ fontSize: px(7), color: "#CC0000" }}>{bubble}</span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -384,8 +394,8 @@ function CharacterBlock({
                 cols={pileCols(coinB)} gap={pileGap} />
             </div>
           </div>
-          <span className="font-nunito font-bold" style={{ fontSize: px(6), color: "#3C3C3C" }}>{nameB}</span>
-          <span className="font-nunito font-black" style={{ fontSize: px(9), color: "#58CC02", lineHeight: 1 }}
+          <span className="font-nunito font-bold" style={{ fontSize: px(8), color: "#3C3C3C" }}>{nameB}</span>
+          <span className="font-nunito font-black" style={{ fontSize: px(11), color: "#58CC02", lineHeight: 1 }}
             data-testid="coin-count-right">
             {coinB}
           </span>
@@ -432,9 +442,11 @@ function AvatarSeal({ label, color }: { label: string; color: string }) {
       exit={{ scale: 0, opacity: 0 }}
       transition={{ type: "spring", stiffness: 360, damping: 20 }}
       className="inline-flex items-center font-nunito font-black uppercase rounded-full"
+      // Fonte 8→11 (item 3 da Luiza, 07/10: aumentar o nome dos participantes
+      // em cima dos botões de escolha).
       style={{
         backgroundColor: color, color: "white",
-        fontSize: 8, padding: "2px 6px",
+        fontSize: 11, padding: "3px 8px",
         border: "1.5px solid rgba(255,255,255,0.35)",
         letterSpacing: 0.5, lineHeight: 1.8, flexShrink: 0,
       }}
@@ -708,6 +720,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   const own = state?.own ?? null;
   const balances = state?.balances ?? null;
   const partnerName = partner?.displayName ?? "seu parceiro";
+  const ownName = state?.participant?.displayName?.trim() ?? "";
   const attemptId = attempt?.id ?? null;
 
   // "Parceiro desconectado": só aparece enquanto EU estou esperando por ele —
@@ -881,7 +894,11 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
         <p className="font-nunito font-black text-white" style={{ fontSize: 22 }}>Você terminou!</p>
         <div className="rounded-2xl px-6 py-3 flex gap-6" style={{ backgroundColor: "white" }}>
           <div>
-            <p className="font-nunito font-bold" style={{ color: "#8A7A52", fontSize: 11 }}>SUAS MOEDAS</p>
+            {/* TEXTO-05: "Suas moedas (nome)" — o nome confirma para a criança
+                (e para a pesquisadora ao lado) de quem é o placar. */}
+            <p className="font-nunito font-bold" style={{ color: "#8A7A52", fontSize: 11 }} data-testid="final-own-label">
+              SUAS MOEDAS{ownName ? ` (${ownName.toUpperCase()})` : ""}
+            </p>
             <p className="font-nunito font-black" style={{ color: "#58CC02", fontSize: 22 }}>{balances.ownCoins}</p>
           </div>
           <div>
@@ -1034,25 +1051,9 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                 </motion.div>
               )}
 
-              {shownPrelude === "divided" && (
-                <motion.div
-                  key="dist-after"
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  className="flex items-center justify-center"
-                >
-                  <div className="flex items-center gap-2">
-                    <motion.div
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: "#FFD900" }}
-                      animate={{ opacity: [0.4, 1, 0.4] }}
-                      transition={{ duration: 0.8, repeat: Infinity }}
-                    />
-                    <span className="font-nunito font-bold" style={{ fontSize: u(15), color: "#AFA99A" }}>
-                      Moedas distribuídas...
-                    </span>
-                  </div>
-                </motion.div>
-              )}
+              {/* Pausa com a divisão feita (DIVIDED_HOLD_MS): sem texto — a
+                  Luiza pediu a remoção de "Moedas distribuídas..." (itens 2 e
+                  4, 07/10). A criança só olha as duas pilhas. */}
 
               {shownPrelude === "ready" && (stage === "JUDGMENT" || stage === "WAITING_JUDGMENT_PARTNER") && (
                 <DecisionCard
@@ -1130,9 +1131,8 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   className="flex flex-col items-center justify-center gap-3 flex-1"
                 >
-                  <p className="font-nunito font-bold text-center" style={{ fontSize: u(16), color: "#8B8B8B" }}>
-                    Nesta história a dupla não ganhou moedas.
-                  </p>
+                  {/* Sem a frase "Nesta história a dupla não ganhou moedas" —
+                      removida a pedido da Luiza (item 5, 07/10). */}
                   <button
                     onClick={advanceToNextStory}
                     disabled={isSubmitting || advanceBlocked}
@@ -1154,8 +1154,9 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   className="flex flex-col items-center justify-center gap-2 flex-1"
                 >
-                  <span className="font-nunito font-bold" style={{ fontSize: u(15), color: "#AFA99A" }}>
-                    Esperando {partnerName} ver o resultado
+                  {/* Só "Esperando {nome}" (item 12 da Luiza, 07/10). */}
+                  <span className="font-nunito font-bold" style={{ fontSize: u(16), color: "#AFA99A" }}>
+                    Esperando {partnerName}
                   </span>
                   <div className="flex gap-1">
                     {[0, 1, 2].map((i) => (

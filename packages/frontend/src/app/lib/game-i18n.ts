@@ -29,7 +29,8 @@ export const translations = {
     distributingLabel: "Hora de Dividir",
     distributorBadgePresent: "DIVIDE",
     distributorBadgePast: "DIVIDIU",
-    together: "COFRINHO",
+    // Rótulo da faixa do topo (item 10 da Luiza, 07/10): "Cofrinho do grupo".
+    together: "COFRINHO DO GRUPO",
     justiceQuestion: "Você acha que essa divisão foi justa ou injusta?",
     just: "Justa",
     unjust: "Injusta",
@@ -98,7 +99,7 @@ export const translations = {
     distributingLabel: "Tid for å dele!",
     distributorBadgePresent: "DELER",
     distributorBadgePast: "DELTE",
-    together: "SAMMEN",
+    together: "GRUPPENS SPAREGRIS",
     justiceQuestion: "Synes du denne fordelingen var rettferdig eller urettferdig?",
     just: "Rettferdig",
     unjust: "Urettferdig",
