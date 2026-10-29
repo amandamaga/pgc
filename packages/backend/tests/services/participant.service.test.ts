@@ -89,6 +89,14 @@ function ownResponse(
   return { sessionParticipantId: SP_ID, judgment, punishment, resultAcknowledgedAt: ack };
 }
 
+/** Registro do parceiro da dupla (sessionParticipant.findFirst). */
+const mockPartnerRecord = {
+  id:          'sp-002',
+  slot:        'P2',
+  displayName: 'Bia',
+  lastSeenAt:  NOW,
+};
+
 function partnerResponse(
   judgment: string | null = null,
   punishment: string | null = null,
@@ -436,6 +444,152 @@ describe('seleção de attempt ativo', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Resposta do parceiro — revelada assim que ELE responde
+//
+// Regra alterada em 26/10/2026 a pedido da pesquisadora (itens 6 e 7 do
+// e-mail da Luiza): a criança vê a escolha do parceiro (justa/injusta, sim/não)
+// antes de decidir. Antes, só depois da própria resposta. A etapa derivada
+// (deriveStage) NÃO muda: cada caso confere que o stage é o mesmo de quando o
+// parceiro não está carregado.
+// ---------------------------------------------------------------------------
+
+describe('resposta do parceiro revelada antes da própria', () => {
+  /** Roda o mesmo cenário sem e com o parceiro carregado; devolve os dois. */
+  async function runWithAndWithoutPartner(
+    responses: ReturnType<typeof ownResponse>[],
+    attemptOverrides: Record<string, unknown> = {},
+    sp: typeof mockSpBase = mockSpBase,
+    partner: Record<string, unknown> = mockPartnerRecord,
+  ) {
+    vi.mocked(prisma.sessionParticipant.findUnique).mockResolvedValue(sp as never);
+    vi.mocked(prisma.attempt.findFirst).mockResolvedValue({
+      ...mockAttemptBase, ...attemptOverrides, responses,
+    } as never);
+
+    vi.mocked(prisma.sessionParticipant.findFirst).mockResolvedValue(null as never);
+    const withoutPartner = await getParticipantState(sp.accessToken);
+
+    vi.mocked(prisma.sessionParticipant.findFirst).mockResolvedValue(partner as never);
+    const withPartner = await getParticipantState(sp.accessToken);
+
+    return { withoutPartner, withPartner };
+  }
+
+  it('parceiro julgou, próprio ainda não (stage JUDGMENT) → partner.judgment preenchido', async () => {
+    const { withoutPartner, withPartner } = await runWithAndWithoutPartner(
+      [partnerResponse('Unjust')],
+    );
+
+    expect(withPartner.stage).toBe('JUDGMENT');
+    expect(withPartner.stage).toBe(withoutPartner.stage);
+    expect(withPartner.partner?.judgment).toBe('Unjust');
+    expect(withPartner.partner?.punishment).toBeNull();
+    // a própria resposta continua vazia: revelar o parceiro não muda o "own"
+    expect(withPartner.own).toEqual({ judgment: null, punishment: null, hasAck: false });
+  });
+
+  it('parceiro puniu, próprio ainda não (stage PUNISHMENT) → partner.punishment === "Punish"', async () => {
+    const { withoutPartner, withPartner } = await runWithAndWithoutPartner(
+      [ownResponse('Just'), partnerResponse('Unjust', 'Punish')],
+    );
+
+    expect(withPartner.stage).toBe('PUNISHMENT');
+    expect(withPartner.stage).toBe(withoutPartner.stage);
+    expect(withPartner.partner?.punishment).toBe('Punish');
+    expect(withPartner.partner?.judgment).toBe('Unjust');
+    expect(withPartner.own.punishment).toBeNull();
+  });
+
+  it('parceiro escolheu NÃO punir, próprio ainda não → partner.punishment === "NoPunish"', async () => {
+    const { withPartner } = await runWithAndWithoutPartner(
+      [ownResponse('Just'), partnerResponse('Just', 'NoPunish')],
+    );
+
+    expect(withPartner.stage).toBe('PUNISHMENT');
+    expect(withPartner.partner?.punishment).toBe('NoPunish');
+  });
+
+  it('parceiro ainda não respondeu → judgment e punishment null', async () => {
+    const { withoutPartner, withPartner } = await runWithAndWithoutPartner([]);
+
+    expect(withPartner.stage).toBe('JUDGMENT');
+    expect(withPartner.stage).toBe(withoutPartner.stage);
+    expect(withPartner.partner?.judgment).toBeNull();
+    expect(withPartner.partner?.punishment).toBeNull();
+  });
+
+  it('próprio julgou, parceiro não (WAITING_JUDGMENT_PARTNER) → partner.judgment null', async () => {
+    const { withoutPartner, withPartner } = await runWithAndWithoutPartner(
+      [ownResponse('Just')],
+    );
+
+    expect(withPartner.stage).toBe('WAITING_JUDGMENT_PARTNER');
+    expect(withPartner.stage).toBe(withoutPartner.stage);
+    expect(withPartner.partner?.judgment).toBeNull();
+  });
+
+  it('coinsAfter do parceiro continua null antes do TrialRecord, mesmo com a punição revelada', async () => {
+    const { withPartner } = await runWithAndWithoutPartner(
+      [ownResponse('Just'), partnerResponse('Unjust', 'Punish')],
+    );
+
+    expect(withPartner.partner?.punishment).toBe('Punish');
+    expect(withPartner.partner?.coinsAfter).toBeNull();
+    // o resultado continua só com TrialRecord
+    expect(withPartner.trialResult).toBeNull();
+  });
+
+  it('vale também para P2 vendo as respostas de P1', async () => {
+    const spP2 = { ...mockSpBase, id: 'sp-002', slot: 'P2', displayName: 'Bia', accessToken: 'tok-p2' };
+    const p1Record = { id: SP_ID, slot: 'P1', displayName: 'Alice', lastSeenAt: NOW };
+    const { withoutPartner, withPartner } = await runWithAndWithoutPartner(
+      [
+        // aqui SP_ID é o PARCEIRO (P1), que já julgou e puniu
+        { sessionParticipantId: SP_ID,    judgment: 'Unjust', punishment: 'Punish', resultAcknowledgedAt: null },
+        { sessionParticipantId: 'sp-002', judgment: 'Unjust', punishment: null,     resultAcknowledgedAt: null },
+      ],
+      {},
+      spP2,
+      p1Record,
+    );
+
+    expect(withPartner.stage).toBe('PUNISHMENT');
+    expect(withPartner.stage).toBe(withoutPartner.stage);
+    expect(withPartner.partner?.slot).toBe('P1');
+    expect(withPartner.partner?.punishment).toBe('Punish');
+    expect(withPartner.own.punishment).toBeNull();
+  });
+
+  it.each([
+    { name: 'JUDGMENT',                   responses: [partnerResponse('Just')] },
+    { name: 'WAITING_JUDGMENT_PARTNER',   responses: [ownResponse('Just')] },
+    { name: 'PUNISHMENT',                 responses: [ownResponse('Just'), partnerResponse('Unjust', 'Punish')] },
+    { name: 'WAITING_PUNISHMENT_PARTNER', responses: [ownResponse('Just', 'Punish'), partnerResponse('Unjust')] },
+  ])('stage $name é o mesmo com e sem o parceiro carregado', async ({ name, responses }) => {
+    const { withoutPartner, withPartner } = await runWithAndWithoutPartner(responses);
+
+    expect(withoutPartner.stage).toBe(name);
+    expect(withPartner.stage).toBe(name);
+  });
+
+  it.each([
+    { name: 'RESULT',                 ack: null },
+    { name: 'WAITING_RESULT_PARTNER', ack: NOW },
+  ])('stage $name (tentativa finalizada) é o mesmo com e sem o parceiro carregado', async ({ name, ack }) => {
+    const { withoutPartner, withPartner } = await runWithAndWithoutPartner(
+      [ownResponse('Just', 'Punish', ack), partnerResponse('Unjust', 'Punish')],
+      { completedAt: new Date(), trialRecord: mockTrialRecord },
+    );
+
+    expect(withoutPartner.stage).toBe(name);
+    expect(withPartner.stage).toBe(name);
+    expect(withPartner.partner?.punishment).toBe('Punish');
+    // no resultado, as moedas do parceiro vêm do TrialRecord (sp é P1 → p2CoinsAfter)
+    expect(withPartner.partner?.coinsAfter).toBe(mockTrialRecord.p2CoinsAfter);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Segurança: campos proibidos na resposta
 // ---------------------------------------------------------------------------
 
@@ -489,20 +643,44 @@ describe('não expõe campos proibidos', () => {
     expect(tr.culturant).toBeUndefined();
   });
 
-  it('resposta nunca expõe julgamento ou punição do parceiro', async () => {
+  // Até 26/10/2026 este bloco tinha "resposta nunca expõe julgamento ou punição
+  // do parceiro" — que passava sem testar nada, porque o parceiro vinha null
+  // (beforeEach). Com a regra nova (itens 6 e 7 da Luiza) as respostas do
+  // parceiro são expostas assim que ele responde; o que continua proibido é
+  // expor o que o parceiro AINDA NÃO respondeu.
+  it('expõe julgamento e punição do parceiro assim que ele responde, mesmo antes da própria resposta', async () => {
     vi.mocked(prisma.sessionParticipant.findUnique).mockResolvedValue(mockSpBase as never);
+    vi.mocked(prisma.sessionParticipant.findFirst).mockResolvedValue(mockPartnerRecord as never);
     vi.mocked(prisma.attempt.findFirst).mockResolvedValue({
       ...mockAttemptBase,
-      responses: [ownResponse('Just', 'Punish'), partnerResponse('Unjust', 'NoPunish')],
+      // próprio só julgou; parceiro julgou e puniu
+      responses: [ownResponse('Just'), partnerResponse('Unjust', 'NoPunish')],
     } as never);
 
     const result = await getParticipantState('tok-abc');
     const json = JSON.stringify(result);
 
-    // 'Unjust' e 'NoPunish' são as respostas do parceiro — não devem aparecer
-    // (próprio usou 'Just' e 'Punish')
-    expect(json).not.toContain('Unjust');
-    expect(json).not.toContain('NoPunish');
+    // 'Unjust' e 'NoPunish' só podem ter vindo do parceiro (próprio usou 'Just')
+    expect(json).toContain('Unjust');
+    expect(json).toContain('NoPunish');
+  });
+
+  it('não expõe resposta que o parceiro ainda não deu', async () => {
+    vi.mocked(prisma.sessionParticipant.findUnique).mockResolvedValue(mockSpBase as never);
+    vi.mocked(prisma.sessionParticipant.findFirst).mockResolvedValue(mockPartnerRecord as never);
+    vi.mocked(prisma.attempt.findFirst).mockResolvedValue({
+      ...mockAttemptBase,
+      // ninguém puniu ainda: nenhum valor de punição pode aparecer na resposta
+      responses: [ownResponse('Just'), partnerResponse('Unjust')],
+    } as never);
+
+    const result = await getParticipantState('tok-abc');
+    const json = JSON.stringify(result);
+
+    expect(result.partner?.punishment).toBeNull();
+    // 'Punish'/'NoPunish' com P maiúsculo: não confunde com as chaves
+    // punishment, punishmentLoss etc.
+    expect(json).not.toContain('Punish');
   });
 
   it('currentAttempt expõe somente os campos públicos esperados', async () => {

@@ -2,8 +2,12 @@
  * participant.service.ts
  * Acesso e estado do participante por accessToken.
  *
- * Não expõe: sequenceVariant, condition, bloco, número/total de rodadas,
- * respostas do parceiro ou accessToken de qualquer participante.
+ * Não expõe: sequenceVariant, condition, bloco, número/total de rodadas
+ * ou accessToken de qualquer participante.
+ *
+ * As respostas do parceiro (julgamento e punição) SÃO expostas assim que ele
+ * responde — ver PartnerView. Regra alterada em 26/10/2026 a pedido da
+ * pesquisadora (itens 6 e 7 do e-mail da Luiza).
  */
 
 import { prisma } from '../config/prisma';
@@ -63,10 +67,16 @@ export type TrialResultView = {
 /**
  * Visão do parceiro.
  *
- * `judgment` e `punishment` só são preenchidos DEPOIS que este participante
- * respondeu a mesma etapa — conforme o fluxo desenhado ("esta caixa só deve
- * aparecer depois que 'você' responder"). Antes disso vêm null, para que a
- * resposta do parceiro não influencie a escolha própria.
+ * `judgment` e `punishment` são preenchidos assim que o PARCEIRO responde a
+ * etapa, mesmo que este participante ainda não tenha respondido: a criança vê
+ * a escolha do parceiro (justa/injusta, sim/não) e a perda dele antes de
+ * decidir. Ficam null só enquanto o parceiro não respondeu.
+ *
+ * Regra alterada em 26/10/2026 a pedido da pesquisadora (itens 6 e 7 do
+ * e-mail da Luiza). Até então seguia o fluxo de setembro ("esta caixa só deve
+ * aparecer depois que 'você' responder") e as respostas só eram reveladas
+ * depois da própria. A etapa (deriveStage) não muda: continua dependendo só
+ * de quem já respondeu.
  *
  * `displayName` é sempre exposto: a dupla joga lado a lado e o fluxo chama o
  * parceiro pelo nome, não pela sigla.
@@ -247,8 +257,8 @@ export async function getParticipantState(accessToken: string): Promise<Particip
     data: { joinedAt: sp.joinedAt ?? now, lastSeenAt: now },
   });
 
-  // O parceiro da dupla. O nome está sempre disponível; as respostas só são
-  // reveladas depois que este participante responder (ver PartnerView).
+  // O parceiro da dupla. O nome está sempre disponível; as respostas são
+  // reveladas assim que o parceiro responde (ver PartnerView).
   const partnerRecord = await prisma.sessionParticipant.findFirst({
     where: { sessionId: sp.sessionId, id: { not: sp.id } },
     select: { id: true, slot: true, displayName: true, lastSeenAt: true },
@@ -348,13 +358,15 @@ export async function getParticipantState(accessToken: string): Promise<Particip
       hasAck:        !!(partnerRaw?.resultAcknowledgedAt),
     };
 
-    // A resposta do parceiro só aparece depois que este participante respondeu
-    // a mesma etapa — antes disso ela influenciaria a escolha.
+    // A resposta do parceiro aparece assim que ele responde, sem esperar a
+    // própria — regra alterada em 26/10/2026 a pedido da pesquisadora (antes
+    // só era revelada depois que este participante respondia a mesma etapa).
+    // Vem da mesma tentativa ativa que ownRaw: nunca mistura tentativas.
     if (partnerIdentity) {
       partnerView = {
         ...partnerIdentity,
-        judgment:   ownRaw?.judgment   ? (partnerRaw?.judgment   ?? null) : null,
-        punishment: ownRaw?.punishment ? (partnerRaw?.punishment ?? null) : null,
+        judgment:   partnerRaw?.judgment   ?? null,
+        punishment: partnerRaw?.punishment ?? null,
         hasAck:     !!(partnerRaw?.resultAcknowledgedAt),
         // Preenchido logo abaixo, quando a tentativa já tem TrialRecord.
         coinsAfter: partnerView?.coinsAfter ?? null,
