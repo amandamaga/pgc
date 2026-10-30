@@ -29,8 +29,9 @@ export const translations = {
     distributingLabel: "Hora de Dividir",
     distributorBadgePresent: "DIVIDE",
     distributorBadgePast: "DIVIDIU",
-    // Rótulo da faixa do topo (item 10 da Luiza, 07/10): "Cofrinho do grupo".
-    together: "COFRINHO DO GRUPO",
+    // Rótulo da faixa do topo. "Moedas do grupo" (item 9 da Luiza, 26/10);
+    // antes "Cofrinho do grupo" (item 10, 07/10). O ícone do porquinho fica.
+    together: "MOEDAS DO GRUPO",
     justiceQuestion: "Você acha que essa divisão foi justa ou injusta?",
     just: "Justa",
     unjust: "Injusta",
