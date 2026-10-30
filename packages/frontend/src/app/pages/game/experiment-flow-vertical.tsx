@@ -38,12 +38,20 @@ const PUNISH_COST_TO_SELF = 1;
 // dividir" um dos personagens segura o endowment inteiro (ate 32).
 const PILE_MAX_DOTS = 32;
 
-// Tempo de leitura do aviso de perdas: AUTO_SCREEN_MS por linha (F2). Duas
-// perdas nao se leem no mesmo tempo que uma. Antes: 5000 ms + 2800 ms/linha.
-const LOSS_READ_PER_LINE_MS = AUTO_SCREEN_MS;
-// As linhas entram uma de cada vez, com pausa suficiente para a primeira ser
-// lida antes da segunda aparecer.
-const LOSS_LINE_STAGGER_S = 0.5;
+// ── Fila de avisos do resultado (itens 4 e 5 da Luiza, 26/10) ───────────────
+// Os avisos de uma história entram UM DE CADA VEZ, nesta ordem:
+//   own     "Você perdeu 1 moeda"            som "Perdeu" (no clique do SIM)
+//   partner "{parceiro} perdeu 1 moeda"      som "Perdeu"
+//   bubble  balão "X perdeu N moedas"        sem som (decisão da Amanda, 29/10)
+//   end     "Vocês ganharam moedas" + som "Ganhou", ou só o botão
+//           "Ver a próxima história" quando a dupla não ganhou moedas
+// Cada aviso só entra depois que o anterior ficou NOTICE_GAP_MS na tela,
+// contando também o "Você perdeu" mostrado no clique. Nada sai da tela até o
+// fim: a janela de ganho abre por cima. Sem nenhuma perda, "end" vem na hora.
+// Antes: linhas juntas (0,5 s de intervalo), 3 s por linha e o som "Ganhou"
+// 400 ms depois do resultado, antes da janela aparecer.
+const NOTICE_GAP_MS = AUTO_SCREEN_MS;
+type NoticeKey = "own" | "partner" | "bubble" | "end";
 // Sinal de presenca chega a cada ~1 s nas telas de espera e a cada 10 s
 // (heartbeat) nas demais: 20 s de folga significa "esta aqui agora".
 const PARTNER_PRESENT_THRESHOLD_SECONDS = 20;
@@ -150,14 +158,54 @@ function CoinDotGrid({ count, maxDots = 12, dotSize = 7, cols = 4, gap = 2 }: {
 }
 
 // ── Sidebar coins ─────────────────────────────────────────────────────────────
-// O experimento começa com 80 moedas, que não cabem como pontos soltos: a barra
-// mostra a proporção e o número exato fica embaixo.
-function SidebarCoins({ count, label, flash = false, align = "left", max = 80 }: {
-  count: number; label: string; flash?: boolean; align?: "left" | "right"; max?: number;
+// Pilha individual de cada criança. Cada uma começa com 80 moedas e só perde
+// (experiment.rules.ts: p1Coins/p2Coins só diminuem), então 80 é o máximo.
+//
+// Item 12 da Luiza (26/10): a pilha fica apoiada EMBAIXO e o espaço vazio
+// cresce no topo, logo abaixo da faixa amarela. Número, "moedas" e nome ficam
+// sempre no mesmo lugar, e no mesmo lugar dos dois lados, o jogo inteiro.
+// Antes a pilha ficava no topo e o número subia conforme ela encolhia.
+//
+// Tamanho da bolinha (decisão da Amanda, 29/10): o maior que deixa as 80
+// caberem na altura disponível, até SIDEBAR_DOT_MAX (o tamanho de antes).
+// Calculado sempre para as 80, nunca para o saldo atual: o tamanho não muda
+// enquanto a pilha encolhe, só se a janela mudar de altura. Os dois lados têm a
+// mesma altura, então chegam ao mesmo tamanho.
+const SIDEBAR_MAX_COINS = 80;
+const SIDEBAR_COLS = 4;
+const SIDEBAR_DOT_MAX = 16;
+const SIDEBAR_DOT_MIN = 6;
+// Espaço entre bolinhas proporcional ao tamanho delas (4 px com 16 px).
+const sidebarGap = (dot: number) => Math.max(2, Math.round(dot / 4));
+
+function fitSidebarDot(availableHeight: number): number {
+  const rows = Math.ceil(SIDEBAR_MAX_COINS / SIDEBAR_COLS);
+  for (let dot = SIDEBAR_DOT_MAX; dot > SIDEBAR_DOT_MIN; dot--) {
+    if (rows * dot + (rows - 1) * sidebarGap(dot) <= availableHeight) return dot;
+  }
+  return SIDEBAR_DOT_MIN;
+}
+
+function SidebarCoins({ count, label, flash = false, align = "left" }: {
+  count: number; label: string; flash?: boolean; align?: "left" | "right";
 }) {
+  // Altura livre para a pilha: tudo o que sobra na barra acima do número.
+  const pileAreaRef = useRef<HTMLDivElement>(null);
+  const [dot, setDot] = useState(SIDEBAR_DOT_MAX);
+  useEffect(() => {
+    const el = pileAreaRef.current;
+    if (!el) return;
+    const measure = () => setDot(fitSidebarDot(el.clientHeight));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
     <motion.div
-      className="h-full flex flex-col items-center px-5 pt-6 pb-6 gap-1.5 overflow-y-auto"
+      className="h-full flex flex-col items-center px-5 pt-4 pb-4 overflow-hidden"
+      data-testid={`sidebar-${align}`}
       style={{
         width: SIDEBAR_W, flexShrink: 0,
         backgroundColor: "rgba(245,240,232,0.6)",
@@ -167,23 +215,38 @@ function SidebarCoins({ count, label, flash = false, align = "left", max = 80 }:
       animate={flash ? { backgroundColor: ["rgba(255,75,75,0.05)", "rgba(255,75,75,0.25)", "rgba(245,240,232,0.6)"] } : {}}
       transition={{ duration: 0.5 }}
     >
-      {/* scaleY(-1) vira a grade de cabeça para baixo: a última moeda desenhada
-          fica no TOPO, então gastar uma moeda esvazia a pilha de cima para
-          baixo, como a retirada física (item 6 da Luiza, 07/10). As bolinhas
-          são círculos, então o espelhamento não muda o desenho de cada uma. */}
-      <div className="mb-3" aria-hidden style={{ transform: "scaleY(-1)" }}>
-        <CoinDotGrid count={count} maxDots={max} dotSize={16} cols={4} gap={4} />
+      {/* Área da pilha: ocupa todo o espaço livre e encosta a pilha embaixo. */}
+      <div ref={pileAreaRef} className="flex-1 min-h-0 w-full flex flex-col items-center justify-end overflow-hidden">
+        {/* scaleY(-1) vira a grade de cabeça para baixo: a última moeda desenhada
+            fica no TOPO, então gastar uma moeda esvazia a pilha de cima para
+            baixo, como a retirada física (item 6 da Luiza, 07/10). As bolinhas
+            são círculos, então o espelhamento não muda o desenho de cada uma. */}
+        <div aria-hidden data-testid={`sidebar-pile-${align}`} style={{ transform: "scaleY(-1)" }}>
+          <CoinDotGrid count={count} maxDots={SIDEBAR_MAX_COINS} dotSize={dot} cols={SIDEBAR_COLS} gap={sidebarGap(dot)} />
+        </div>
       </div>
-      <span className="font-nunito font-black" style={{ fontSize: 28, color: "#58CC02", lineHeight: 1 }}>
-        {count}
-      </span>
-      {/* "moedas" por extenso embaixo dos cofrinhos individuais (item 1). */}
-      <span className="font-nunito font-bold" style={{ fontSize: 13, color: "#8A7A52" }}>
-        {count === 1 ? "moeda" : "moedas"}
-      </span>
-      <span className="font-nunito font-bold uppercase text-center" style={{ fontSize: 13, color: "#8A7A52", letterSpacing: 1 }}>
-        {label}
-      </span>
+      {/* Número e rótulos com altura fixa: não se mexem quando a pilha muda. */}
+      <div className="flex flex-col items-center flex-shrink-0 pt-3" style={{ gap: 6 }}>
+        <span className="font-nunito font-black" data-testid={`sidebar-count-${align}`}
+          style={{ fontSize: 28, color: "#58CC02", lineHeight: 1 }}>
+          {count}
+        </span>
+        {/* "moedas" por extenso embaixo das pilhas individuais (item 1). */}
+        <span className="font-nunito font-bold" style={{ fontSize: 13, color: "#8A7A52", lineHeight: 1.25 }}>
+          {count === 1 ? "moeda" : "moedas"}
+        </span>
+        {/* Sempre duas linhas reservadas para o nome, nos dois lados: um nome
+            comprido do parceiro quebra em duas linhas sem empurrar o número
+            daquele lado para cima. Mais de duas linhas é cortado. */}
+        <span className="font-nunito font-bold uppercase text-center"
+          style={{
+            fontSize: 13, color: "#8A7A52", letterSpacing: 1, lineHeight: 1.25,
+            height: "2.5em", overflow: "hidden", overflowWrap: "anywhere",
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+          }}>
+          {label}
+        </span>
+      </div>
     </motion.div>
   );
 }
@@ -561,13 +624,12 @@ function DecisionCard({
 }
 
 // ── Linha de perda ────────────────────────────────────────────────────────────
-function LossRow({ msg, delay = 0 }: { msg: string; delay?: number }) {
+function LossRow({ msg }: { msg: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0 }}
-      transition={{ delay }}
       className="flex items-center gap-2.5 rounded-xl px-4 py-2"
       style={{ backgroundColor: "#FFF0F0", border: "2px solid #FFCDD2" }}
     >
@@ -587,12 +649,16 @@ function LossRow({ msg, delay = 0 }: { msg: string; delay?: number }) {
 // Fica embaixo dos botoes, no fluxo da tela: a crianca ve o que aconteceu sem
 // perder de vista a escolha que acabou de fazer. So as linhas de perda -- um
 // titulo "Punicao aplicada" por cima delas seria dizer duas vezes a mesma coisa.
-function LossFeedback({ messages }: { messages: string[] }) {
+// Cada linha entra quando a fila de avisos a libera (NOTICE_GAP_MS); a chave
+// estável faz só a linha nova animar, sem redesenhar as que já estavam.
+function LossFeedback({ lines }: { lines: { key: string; msg: string }[] }) {
   return (
     <div className="flex flex-col gap-1 flex-shrink-0">
-      {messages.map((msg, i) => (
-        <LossRow key={i} msg={msg} delay={i * LOSS_LINE_STAGGER_S} />
-      ))}
+      <AnimatePresence>
+        {lines.map((line) => (
+          <LossRow key={line.key} msg={line.msg} />
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
@@ -600,8 +666,15 @@ function LossFeedback({ messages }: { messages: string[] }) {
 // ── Ganho da dupla ────────────────────────────────────────────────────────────
 // Modal em vez de tela cheia: o tabuleiro continua visivel atras, entao a crianca
 // ve que o ganho veio da historia que ainda esta na tela, e nao de um lugar novo.
-function GroupRewardModal({ amount, piggyBank, onContinue, disabled = false }: {
-  amount: number; piggyBank: number; onContinue: () => void; disabled?: boolean;
+// Avisa quem o desenhou assim que entra na tela (uma vez por montagem). Usado
+// para registrar nextStoryAvailableAt no momento em que o botão existe.
+function MountSignal({ onMount }: { onMount: () => void }) {
+  useEffect(() => { onMount(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+function GroupRewardModal({ amount, piggyBank, onContinue, onButtonShown, disabled = false }: {
+  amount: number; piggyBank: number; onContinue: () => void; onButtonShown: () => void; disabled?: boolean;
 }) {
   return (
     <motion.div
@@ -655,7 +728,7 @@ function GroupRewardModal({ amount, piggyBank, onContinue, disabled = false }: {
           className="rounded-2xl px-6 py-2.5" style={{ backgroundColor: "white" }}
         >
           <p className="font-nunito font-bold" style={{ color: "#1CB0F6", fontSize: u(16) }}>
-            Cofrinho da dupla: {piggyBank}
+            Moedas do grupo: {piggyBank}
           </p>
         </motion.div>
 
@@ -663,6 +736,7 @@ function GroupRewardModal({ amount, piggyBank, onContinue, disabled = false }: {
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.75 }}
           style={{ width: "100%", maxWidth: u(300) }}
         >
+          <MountSignal onMount={onButtonShown} />
           <button
             onClick={onContinue}
             disabled={disabled}
@@ -750,10 +824,19 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   // abaixo); sem esta marca, um "ready" velho dispararia o story-shown cedo.
   const [preludeAttemptId, setPreludeAttemptId] = useState<string | null>(null);
   const [coinLostFlash, setCoinLostFlash] = useState(false);
-  // Marca que a crianca escolheu punir, para o "voce perdeu" sair no clique e nao
-  // so quando o servidor devolve o resultado da dupla.
-  const [justPunished, setJustPunished] = useState(false);
-  const [showLossFeedback, setShowLossFeedback] = useState(false);
+
+  // Fila de avisos (ver NoticeKey): quando cada aviso desta história entrou na
+  // tela (Date.now()). O estado desenha; o ref é lido pelo efeito da fila sem
+  // depender de render. Zera a cada história nova.
+  const [noticeShownAt, setNoticeShownAt] = useState<Partial<Record<NoticeKey, number>>>({});
+  const noticeShownAtRef = useRef<Partial<Record<NoticeKey, number>>>({});
+  const showNotice = (key: NoticeKey) => {
+    if (noticeShownAtRef.current[key] != null) return false;
+    const at = Date.now();
+    noticeShownAtRef.current = { ...noticeShownAtRef.current, [key]: at };
+    setNoticeShownAt(noticeShownAtRef.current);
+    return true;
+  };
 
   // Clique único entre histórias (F2): o "Ver a próxima história" do resultado
   // já é o clique que inicia a história seguinte. Marca que esta criança
@@ -777,8 +860,8 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     advancedFromResult.current = false;
     setPrelude(own?.judgment ? "ready" : startDirectly ? "dividing" : "intro");
     setPreludeAttemptId(attemptId);
-    setShowLossFeedback(false);
-    setJustPunished(false);
+    noticeShownAtRef.current = {};
+    setNoticeShownAt({});
   }, [attemptId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // "Hora de Dividir" e so um aviso: a divisao comeca sozinha.
@@ -802,49 +885,67 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     return () => clearTimeout(t);
   }, [prelude]);
 
-  // Som de ganho quando a dupla ganhou moedas nesta história.
   const earnedCoins = (result?.culturalConsequence ?? 0) > 0;
-  useEffect(() => {
-    if (stage !== "RESULT" || !earnedCoins) return;
-    const t = setTimeout(() => playCulturantSound(), 400);
-    return () => clearTimeout(t);
-  }, [stage, earnedCoins, playCulturantSound]);
 
-  // O aviso de perda aparece assim que o resultado chega e sai sozinho.
-  // So as perdas da dupla. A perda do personagem distribuidor ja aparece no balao
-  // sobre o retrato dele (distributorBubble), e repetir aqui embaixo misturava o
-  // que aconteceu com a historia e o que aconteceu com as duas criancas.
-  const lossMessages: string[] = [];
-  if (result) {
-    if (result.ownIndividualCost > 0) lossMessages.push(`Você perdeu ${moedas(result.ownIndividualCost)}`);
-    if (partner?.punishment === "Punish") lossMessages.push(`${partnerName} perdeu ${moedas(1)}`);
+  // ── Fila de avisos do resultado ────────────────────────────────────────────
+  // Quais avisos esta história tem, na ordem em que entram. As linhas de perda
+  // são só as da dupla; a perda do personagem que dividiu vai no balão sobre o
+  // retrato dele (bubble), e não se repete embaixo.
+  const isResult = stage === "RESULT" && !!result;
+  const resultNotices: NoticeKey[] = [];
+  if (isResult) {
+    if (result.ownIndividualCost > 0) resultNotices.push("own");
+    if (partner?.punishment === "Punish") resultNotices.push("partner");
+    if (result.distributorResult) resultNotices.push("bubble");
+    resultNotices.push("end");
   }
-  const lossLineCount = lossMessages.length;
-  // O aviso depende das proprias mensagens: qualquer perda individual da dupla
-  // (minha ou do parceiro) conta. Antes dependia de punishmentApplied/meu custo,
-  // e quando so o parceiro punia a perda dele nunca aparecia para mim.
-  const anyoneLostCoins = lossLineCount > 0;
+  const resultNoticesKey = resultNotices.join(",");
 
-  // Tentativa cujo aviso de perda já terminou. `showLossFeedback` sozinho não
-  // basta: ele começa false antes do efeito abaixo ligá-lo, e esse false inicial
-  // não pode ser confundido com "o aviso já acabou".
-  const [lossFeedbackDoneFor, setLossFeedbackDoneFor] = useState<string | null>(null);
-
+  // Agenda os avisos que ainda não apareceram: cada um NOTICE_GAP_MS depois do
+  // mais recente que já está na tela (inclusive o "Você perdeu" do clique).
+  // Recalcula a partir dos horários guardados, então rodar de novo (StrictMode,
+  // novo render) continua do ponto em que estava, sem repetir aviso nem som.
   useEffect(() => {
-    if (stage !== "RESULT" || !anyoneLostCoins) return;
-    setShowLossFeedback(true);
-    const t = setTimeout(() => {
-      setShowLossFeedback(false);
-      setLossFeedbackDoneFor(attemptId);
-    }, LOSS_READ_PER_LINE_MS * lossLineCount);
-    return () => clearTimeout(t);
-  }, [stage, anyoneLostCoins, lossLineCount, attemptId]);
+    if (!isResult || !attemptId) return;
+    const keys = resultNoticesKey.split(",") as NoticeKey[];
+    const shown = noticeShownAtRef.current;
+    const now = Date.now();
+    let last: number | null = null;
+    for (const k of keys) {
+      const at = shown[k];
+      if (at != null) last = last == null ? at : Math.max(last, at);
+    }
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (const k of keys) {
+      if (shown[k] != null) continue;
+      const appearAt: number = last == null ? now : Math.max(now, last + NOTICE_GAP_MS);
+      timers.push(setTimeout(() => {
+        if (!showNotice(k)) return;
+        // Som de cada aviso, tocado quando ele entra. O balão não tem som.
+        if (k === "own" || k === "partner") playPunishmentSound();
+        if (k === "end" && earnedCoins) playCulturantSound();
+      }, appearAt - now));
+      last = appearAt;
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [isResult, attemptId, resultNoticesKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Todos os avisos obrigatórios do resultado terminaram: ou não houve perda
-  // individual, ou o aviso de perda desta tentativa já saiu da tela. É o ponto
-  // em que "Ver a próxima história" passa a existir (com ou sem ganho da dupla).
-  const resultFeedbackDone = stage === "RESULT" && !!attemptId
-    && (!anyoneLostCoins || lossFeedbackDoneFor === attemptId);
+  // Linhas de perda que já estão na tela. "Você perdeu" entra no clique do SIM
+  // com o custo fixo da pergunta; no resultado usa o valor do servidor.
+  const lossLines: { key: string; msg: string }[] = [];
+  if (noticeShownAt.own != null) {
+    lossLines.push({ key: "own", msg: `Você perdeu ${moedas(isResult ? result.ownIndividualCost : PUNISH_COST_TO_SELF)}` });
+  }
+  if (noticeShownAt.partner != null && partner?.punishment === "Punish") {
+    lossLines.push({ key: "partner", msg: `${partnerName} perdeu ${moedas(1)}` });
+  }
+
+  // Fim da fila: "Ver a próxima história" passa a existir (na janela de ganho
+  // ou sozinho). Sem nenhuma perda, a fila é só "end" e o botão vem na hora,
+  // sem esperar o efeito acima (que ainda registra o horário e toca o som).
+  const onlyEndNotice = resultNoticesKey === "end";
+  const resultFeedbackDone = isResult && !!attemptId
+    && (noticeShownAt.end != null || onlyEndNotice);
 
   // storyShownAt: a história completa (divisão final) está na tela e a criança
   // já pode julgá-la. Não vale no "Ver história" nem durante a animação; e se
@@ -856,9 +957,15 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   }, [storyReadyToJudge, storyShownStatus, markStoryShown]);
 
   // nextStoryAvailableAt: o avanço acabou de ficar disponível para esta criança.
+  // Dispara quando o botão "Ver a próxima história" entra na tela (MountSignal
+  // dentro dos dois botões), e não no fim da fila: sem ganho, o botão ainda
+  // espera ~0,3 s a saída do cartão da pergunta, e o marco saía antes dele.
+  const [advanceButtonFor, setAdvanceButtonFor] = useState<string | null>(null);
+  const onAdvanceButtonShown = () => setAdvanceButtonFor(attemptId);
+  const advanceButtonShown = resultFeedbackDone && advanceButtonFor === attemptId;
   useEffect(() => {
-    if (resultFeedbackDone && nextStoryAvailableStatus === "idle") void markNextStoryAvailable();
-  }, [resultFeedbackDone, nextStoryAvailableStatus, markNextStoryAvailable]);
+    if (advanceButtonShown && nextStoryAvailableStatus === "idle") void markNextStoryAvailable();
+  }, [advanceButtonShown, nextStoryAvailableStatus, markNextStoryAvailable]);
 
   // Os botões só respondem depois que o servidor confirmou o respectivo marco.
   const judgmentBlocked = !own?.judgment && storyShownStatus !== "done";
@@ -902,7 +1009,9 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
             <p className="font-nunito font-black" style={{ color: "#58CC02", fontSize: 22 }}>{balances.ownCoins}</p>
           </div>
           <div>
-            <p className="font-nunito font-bold" style={{ color: "#8A7A52", fontSize: 11 }}>COFRINHO DA DUPLA</p>
+            {/* "Moedas do grupo", o mesmo rótulo da faixa do topo (item 9 da
+                Luiza, 26/10). Antes "COFRINHO DA DUPLA". */}
+            <p className="font-nunito font-bold" style={{ color: "#8A7A52", fontSize: 11 }}>MOEDAS DO GRUPO</p>
             <p className="font-nunito font-black" style={{ color: "#1CB0F6", fontSize: 22 }}>{balances.groupCoins}</p>
           </div>
         </div>
@@ -954,9 +1063,19 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   const displayCoinA = distributorIsA ? distributorCoins : receptorCoins;
   const displayCoinB = distributorIsA ? receptorCoins : distributorCoins;
 
-  const distributorBubble = stage === "RESULT" && result?.distributorResult
+  // O balão entra na vez dele na fila de avisos, não junto com o resultado.
+  const distributorBubble = isResult && noticeShownAt.bubble != null && result?.distributorResult
     ? `${result.distributorResult.character} perdeu ${moedas(result.distributorResult.coinsLost)}`
     : null;
+
+  // Durante a fila o cartão da punição continua na tela com as linhas de perda.
+  // Ele sai no fim só quando a dupla não ganhou moedas: o botão toma o lugar
+  // dele. Com ganho, a janela abre por cima e o cartão fica atrás.
+  const showPunishmentCard = stage === "PUNISHMENT" || stage === "WAITING_PUNISHMENT_PARTNER"
+    // Pela lista da fila, não pelas linhas já mostradas: senão o cartão sumia
+    // por um instante no resultado, antes da primeira linha nova entrar.
+    || (isResult && (resultNotices.includes("own") || resultNotices.includes("partner"))
+        && !(resultFeedbackDone && !earnedCoins));
 
   return (
     <div className="h-full flex flex-col relative" style={{ backgroundColor: "#F5F2EB", ["--ui" as string]: ui }}>
@@ -1027,11 +1146,16 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                   initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                   className="flex items-center justify-center pt-1"
                 >
+                  {/* Aviso, não botão (item 8 da Luiza, 26/10): fundo branco e
+                      a mesma borda do cartão da pergunta, sem a borda inferior
+                      mais grossa que dá cara de botão. Antes amarelo, igual ao
+                      "Repetir história", que é clicável. */}
                   <div
                     className="font-nunito font-black rounded-2xl select-none"
+                    data-testid="divide-cue"
                     style={{
-                      backgroundColor: "#FFD900", color: "#7A5800", padding: `${u(8)} ${u(22)}`,
-                      border: "2px solid #CE9200", borderBottom: "3px solid #CE9200", fontSize: u(17),
+                      backgroundColor: "#FFFFFF", color: "#3C3C3C", padding: `${u(8)} ${u(22)}`,
+                      border: "2px solid #E0E0E0", fontSize: u(17),
                     }}
                   >
                     Hora de Dividir
@@ -1087,9 +1211,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                 />
               )}
 
-              {shownPrelude === "ready"
-                && (stage === "PUNISHMENT" || stage === "WAITING_PUNISHMENT_PARTNER"
-                    || (stage === "RESULT" && showLossFeedback && lossMessages.length > 0)) && (
+              {shownPrelude === "ready" && showPunishmentCard && (
                 <motion.div
                   key="punishment"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1105,22 +1227,17 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                     partnerChoice={partner?.punishment ?? null}
                     onChoose={(v) => {
                       if (v === "Punish") {
-                        setJustPunished(true);
+                        // "Você perdeu" sai no clique, não só quando o servidor
+                        // devolve o resultado; é o primeiro aviso da fila.
+                        if (showNotice("own")) playPunishmentSound();
                         setCoinLostFlash(true);
-                        playPunishmentSound();
                         setTimeout(() => setCoinLostFlash(false), 600);
                       }
                       void submitPunishment(v as "Punish" | "NoPunish");
                     }}
                     partnerName={partnerName}
                     disabled={isSubmitting}
-                    footer={
-                      stage === "RESULT" && showLossFeedback && lossMessages.length > 0 ? (
-                        <LossFeedback messages={lossMessages} />
-                      ) : justPunished ? (
-                        <LossFeedback messages={[`Você perdeu ${moedas(PUNISH_COST_TO_SELF)}`]} />
-                      ) : undefined
-                    }
+                    footer={lossLines.length > 0 ? <LossFeedback lines={lossLines} /> : undefined}
                   />
                 </motion.div>
               )}
@@ -1133,6 +1250,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                 >
                   {/* Sem a frase "Nesta história a dupla não ganhou moedas" —
                       removida a pedido da Luiza (item 5, 07/10). */}
+                  <MountSignal onMount={onAdvanceButtonShown} />
                   <button
                     onClick={advanceToNextStory}
                     disabled={isSubmitting || advanceBlocked}
@@ -1183,6 +1301,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
             amount={result?.culturalConsequence ?? 0}
             piggyBank={balances.groupCoins}
             onContinue={advanceToNextStory}
+            onButtonShown={onAdvanceButtonShown}
             disabled={isSubmitting || advanceBlocked}
           />
         )}
