@@ -666,12 +666,12 @@ function LossFeedback({ lines }: { lines: { key: string; msg: string }[] }) {
 // ── Ganho da dupla ────────────────────────────────────────────────────────────
 // Modal em vez de tela cheia: o tabuleiro continua visivel atras, entao a crianca
 // ve que o ganho veio da historia que ainda esta na tela, e nao de um lugar novo.
-// Avisa quem o desenhou assim que entra na tela (uma vez por montagem). Usado
-// para registrar nextStoryAvailableAt no momento em que o botão existe.
-function MountSignal({ onMount }: { onMount: () => void }) {
-  useEffect(() => { onMount(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  return null;
-}
+// O botão "Ver a próxima história" entra com fade. nextStoryAvailableAt é
+// registrado quando a entrada termina (o botão está visível), e não quando ele
+// é montado: na janela de ganho a entrada começa 0,75 s depois da montagem.
+// onAnimationComplete também dispara no fade de saída; só a entrada conta.
+const finishedEntering = (def: unknown) =>
+  typeof def === "object" && def !== null && (def as { opacity?: number }).opacity === 1;
 
 function GroupRewardModal({ amount, piggyBank, onContinue, onButtonShown, disabled = false }: {
   amount: number; piggyBank: number; onContinue: () => void; onButtonShown: () => void; disabled?: boolean;
@@ -734,9 +734,9 @@ function GroupRewardModal({ amount, piggyBank, onContinue, onButtonShown, disabl
 
         <motion.div
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.75 }}
+          onAnimationComplete={(def) => { if (finishedEntering(def)) onButtonShown(); }}
           style={{ width: "100%", maxWidth: u(300) }}
         >
-          <MountSignal onMount={onButtonShown} />
           <button
             onClick={onContinue}
             disabled={disabled}
@@ -837,6 +837,15 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
     setNoticeShownAt(noticeShownAtRef.current);
     return true;
   };
+  // Para um aviso poder entrar de novo (com som): usado quando a criança clica
+  // SIM outra vez depois de um envio que falhou.
+  const forgetNotice = (key: NoticeKey) => {
+    if (noticeShownAtRef.current[key] == null) return;
+    const next = { ...noticeShownAtRef.current };
+    delete next[key];
+    noticeShownAtRef.current = next;
+    setNoticeShownAt(next);
+  };
 
   // Clique único entre histórias (F2): o "Ver a próxima história" do resultado
   // já é o clique que inicia a história seguinte. Marca que esta criança
@@ -887,6 +896,20 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
 
   const earnedCoins = (result?.culturalConsequence ?? 0) > 0;
 
+  // Item 7 da Luiza (26/10): "{parceiro} perdeu 1 moeda" aparece assim que o
+  // parceiro escolhe SIM, mesmo antes da minha resposta. O servidor revela a
+  // escolha dele (f54b88a) e o polling do próprio turno a traz. O som toca uma
+  // vez por história: showNotice só aceita o primeiro registro da tentativa,
+  // então o polling a cada 1,2 s não repete o som.
+  // Só enquanto EU ainda vou responder (PUNISHMENT). Em WAITING_PUNISHMENT_PARTNER
+  // o parceiro só aparece como "puniu" num instante de transição do servidor,
+  // antes de virar RESULT; ali a linha dele entra pela fila, 3 s depois da minha.
+  const partnerPunishedNow = stage === "PUNISHMENT" && partner?.punishment === "Punish";
+  useEffect(() => {
+    if (!partnerPunishedNow || !attemptId) return;
+    if (showNotice("partner")) playPunishmentSound();
+  }, [partnerPunishedNow, attemptId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Fila de avisos do resultado ────────────────────────────────────────────
   // Quais avisos esta história tem, na ordem em que entram. As linhas de perda
   // são só as da dupla; a perda do personagem que dividiu vai no balão sobre o
@@ -932,13 +955,22 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
 
   // Linhas de perda que já estão na tela. "Você perdeu" entra no clique do SIM
   // com o custo fixo da pergunta; no resultado usa o valor do servidor.
-  const lossLines: { key: string; msg: string }[] = [];
-  if (noticeShownAt.own != null) {
-    lossLines.push({ key: "own", msg: `Você perdeu ${moedas(isResult ? result.ownIndividualCost : PUNISH_COST_TO_SELF)}` });
+  // O "Você perdeu" só continua na tela enquanto a punição está sendo enviada
+  // ou depois que o servidor a registrou: se o envio falhar, a linha some (e um
+  // novo SIM a mostra de novo, com som).
+  const ownLossValid = isResult
+    ? result.ownIndividualCost > 0
+    : isSubmitting || own?.punishment === "Punish";
+  const lossLines: { key: string; msg: string; at: number }[] = [];
+  if (noticeShownAt.own != null && ownLossValid) {
+    lossLines.push({ key: "own", at: noticeShownAt.own, msg: `Você perdeu ${moedas(isResult ? result.ownIndividualCost : PUNISH_COST_TO_SELF)}` });
   }
   if (noticeShownAt.partner != null && partner?.punishment === "Punish") {
-    lossLines.push({ key: "partner", msg: `${partnerName} perdeu ${moedas(1)}` });
+    lossLines.push({ key: "partner", at: noticeShownAt.partner, msg: `${partnerName} perdeu ${moedas(1)}` });
   }
+  // Na ordem em que entraram: a linha nova vai sempre embaixo, sem empurrar a
+  // que já estava (quando o parceiro pune antes, a linha dele fica em cima).
+  lossLines.sort((a, b) => a.at - b.at);
 
   // Fim da fila: "Ver a próxima história" passa a existir (na janela de ganho
   // ou sozinho). Sem nenhuma perda, a fila é só "end" e o botão vem na hora,
@@ -957,9 +989,10 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
   }, [storyReadyToJudge, storyShownStatus, markStoryShown]);
 
   // nextStoryAvailableAt: o avanço acabou de ficar disponível para esta criança.
-  // Dispara quando o botão "Ver a próxima história" entra na tela (MountSignal
-  // dentro dos dois botões), e não no fim da fila: sem ganho, o botão ainda
-  // espera ~0,3 s a saída do cartão da pergunta, e o marco saía antes dele.
+  // Dispara quando o botão "Ver a próxima história" termina de aparecer
+  // (finishedEntering, nos dois botões), e não no fim da fila: sem ganho o
+  // botão ainda espera ~0,3 s a saída do cartão da pergunta, e na janela de
+  // ganho ele entra 0,75 s depois dela; nos dois casos o marco saía antes.
   const [advanceButtonFor, setAdvanceButtonFor] = useState<string | null>(null);
   const onAdvanceButtonShown = () => setAdvanceButtonFor(attemptId);
   const advanceButtonShown = resultFeedbackDone && advanceButtonFor === attemptId;
@@ -1229,6 +1262,7 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                       if (v === "Punish") {
                         // "Você perdeu" sai no clique, não só quando o servidor
                         // devolve o resultado; é o primeiro aviso da fila.
+                        forgetNotice("own");
                         if (showNotice("own")) playPunishmentSound();
                         setCoinLostFlash(true);
                         setTimeout(() => setCoinLostFlash(false), 600);
@@ -1246,11 +1280,11 @@ export function ExperimentFlowVertical({ token }: { token: string }) {
                 <motion.div
                   key="result-plain"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  onAnimationComplete={(def) => { if (finishedEntering(def)) onAdvanceButtonShown(); }}
                   className="flex flex-col items-center justify-center gap-3 flex-1"
                 >
                   {/* Sem a frase "Nesta história a dupla não ganhou moedas" —
                       removida a pedido da Luiza (item 5, 07/10). */}
-                  <MountSignal onMount={onAdvanceButtonShown} />
                   <button
                     onClick={advanceToNextStory}
                     disabled={isSubmitting || advanceBlocked}
