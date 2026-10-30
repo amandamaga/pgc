@@ -14,6 +14,14 @@ type MarkerKind = "storyShown" | "nextStoryAvailable";
 
 const markerKey = (kind: MarkerKind, attemptId: string) => `${kind}:${attemptId}`;
 
+// Etapas em que o estado é consultado a cada POLL_INTERVAL_MS: as de espera e
+// também as do próprio turno (julgar, punir). No próprio turno o polling traz a
+// escolha do parceiro assim que ele responde — o servidor passou a revelá-la
+// antes da resposta própria (itens 6 e 7 da Luiza, 26/10; backend em f54b88a).
+// Antes só as etapas de espera consultavam.
+const POLL_STAGES: Stage[] = [...WAITING_STAGES, "JUDGMENT", "PUNISHMENT"];
+const POLL_INTERVAL_MS = 1200;
+
 export function useParticipantState(token: string) {
   const client = useMemo(() => createParticipantClient(token), [token]);
   const [state, setState] = useState<ParticipantState | null>(null);
@@ -21,6 +29,9 @@ export function useParticipantState(token: string) {
   const [isLoading, setLoading] = useState(true);
   const [isSubmitting, setSubmitting] = useState(false);
   const busy = useRef(false);
+  // O que está ocupando o `busy`: uma consulta (polling/refresh) ou uma ação
+  // da criança (julgar, punir, avançar). Só a consulta pode ser interrompida.
+  const busyWithQuery = useRef(false);
   const controller = useRef<AbortController | null>(null);
 
   // Marcos de tempo: canal separado do `run`, para não disputar o `busy` com o
@@ -33,8 +44,18 @@ export function useParticipantState(token: string) {
   const markerControllers = useRef(new Set<AbortController>());
 
   const run = useCallback(async (action?: (signal: AbortSignal) => Promise<ParticipantState>) => {
-    if (busy.current) return;
+    if (busy.current) {
+      // Com polling no próprio turno, o clique da criança pode chegar no meio de
+      // uma consulta. Antes a ação era descartada em silêncio (o clique em SIM
+      // "não fazia nada"). Agora a consulta é abortada e a ação segue; o
+      // resultado da consulta abortada é ignorado (signal.aborted) e o `finally`
+      // dela não libera o `busy`, porque `controller.current` já é o da ação.
+      // Consulta durante outra consulta ou ação continua sendo descartada.
+      if (action && busyWithQuery.current) controller.current?.abort();
+      else return;
+    }
     busy.current = true;
+    busyWithQuery.current = !action;
     const current = new AbortController();
     controller.current = current;
     setError(null);
@@ -113,14 +134,14 @@ export function useParticipantState(token: string) {
   }, [run]);
 
   useEffect(() => {
-    if (!state || error || !WAITING_STAGES.includes(state.stage)) return;
-    const timer = setTimeout(() => { void run(); }, 1200);
+    if (!state || error || !POLL_STAGES.includes(state.stage)) return;
+    const timer = setTimeout(() => { void run(); }, POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
   }, [state, error, run]);
 
-  // Heartbeat de presença em TODAS as telas. O polling acima só roda nas telas
-  // de espera; sem isto, durante o próprio turno (julgando, punindo, lendo o
-  // resultado) o lastSeenAt envelhecia e o parceiro via falso "desconectado".
+  // Heartbeat de presença em TODAS as telas. O polling acima não roda no
+  // resultado; sem isto, lendo o resultado (ou em qualquer tela sem consulta) o
+  // lastSeenAt envelhecia e o parceiro via falso "desconectado".
   // Canal próprio: não usa `busy`, não mexe em `state` nem em `error` — uma
   // falha aqui não deve aparecer para a criança (o próximo envio tenta de novo).
   const sessionOver = state?.stage === "COMPLETED";
