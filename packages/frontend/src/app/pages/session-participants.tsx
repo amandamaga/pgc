@@ -1,6 +1,16 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Alert, AlertDescription } from "../components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -21,6 +31,10 @@ export function SessionParticipantsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Janela "Iniciar a sessão?": iniciar monta as 64 tentativas e trava a dupla,
+  // sem volta. A pesquisadora confere os dois códigos antes (prometido no
+  // tutorial de 17/09, "Próxima versão").
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [localRevision, setLocalRevision] = useState(0);
   const [drafts, setDrafts] = useState({
     P1: { displayName: "", participantCode: "" },
@@ -191,7 +205,7 @@ export function SessionParticipantsPage() {
 
       {details?.status === "WAITING" && (
         <div>
-          <Button disabled={saving || !bothRegistered} onClick={start}>
+          <Button disabled={saving || !bothRegistered} onClick={() => setConfirmOpen(true)}>
             {saving ? "Aguarde..." : "Iniciar sessão"}
           </Button>
           {!bothRegistered && (
@@ -201,6 +215,43 @@ export function SessionParticipantsPage() {
           )}
         </div>
       )}
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Iniciar a sessão?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Confira os códigos. Eles são a identificação das crianças na planilha de dados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <dl className="grid gap-2 rounded-md border p-3 text-sm" data-testid="start-confirm-participants">
+            {SLOTS.map((slot) => {
+              const participant = details?.participants.find((p) => p.slot === slot);
+              return (
+                <div key={slot} className="flex flex-wrap items-baseline gap-x-2">
+                  <dt className="font-semibold">{slot}</dt>
+                  <dd className="flex flex-wrap gap-x-2">
+                    <span>{participant?.displayName ?? "—"}</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span>
+                      código <span className="font-mono font-semibold">{participant?.participantCode ?? "—"}</span>
+                    </span>
+                  </dd>
+                </div>
+              );
+            })}
+          </dl>
+          <p className="text-muted-foreground text-sm">
+            Depois de iniciar, não dá para corrigir os participantes nem apagar a sessão.
+          </p>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { void start(); }}>
+              Iniciar sessão
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {details && <ParticipantAccessLinks key={localRevision} sessionId={sessionId} />}
     </div>

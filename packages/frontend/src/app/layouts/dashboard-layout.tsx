@@ -3,8 +3,25 @@ import { Outlet, Link, useNavigate } from "react-router";
 import { FlaskConical, LogOut } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
+// Nome e e-mail de quem entrou, gravados pelo login (login.tsx) a partir da
+// resposta de /auth/login. Antes o cabeçalho mostrava sempre o texto de exemplo
+// "Pesquisador / pesquisador@uni.br" (prometido no tutorial de 17/09).
+function readResearcher(): { name: string; email: string } {
+  try {
+    const stored = JSON.parse(localStorage.getItem("researcher") ?? "null") as
+      { name?: unknown; email?: unknown } | null;
+    return {
+      name: typeof stored?.name === "string" && stored.name.trim() ? stored.name.trim() : "Pesquisadora",
+      email: typeof stored?.email === "string" ? stored.email : "",
+    };
+  } catch {
+    return { name: "Pesquisadora", email: "" };
+  }
+}
+
 export function DashboardLayout() {
   const navigate = useNavigate();
+  const researcher = readResearcher();
 
   const handleLogout = () => {
     clearResearcherAuth();
@@ -28,12 +45,12 @@ export function DashboardLayout() {
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-50 transition-colors">
-                <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 text-sm font-medium">
-                  R
+                <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 text-sm font-medium" aria-hidden>
+                  {researcher.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="hidden sm:block text-left">
-                  <p className="text-sm font-medium text-slate-900">Pesquisador</p>
-                  <p className="text-xs text-slate-500">pesquisador@uni.br</p>
+                  <p className="text-sm font-medium text-slate-900" data-testid="researcher-name">{researcher.name}</p>
+                  {researcher.email && <p className="text-xs text-slate-500">{researcher.email}</p>}
                 </div>
               </button>
             </DropdownMenu.Trigger>
