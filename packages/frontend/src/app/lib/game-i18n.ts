@@ -180,6 +180,8 @@ export function getLang(sessionId?: string): Lang {
   return getPreviewLang() ?? researchLang ?? "pt";
 }
 
-export function t(sessionId?: string): typeof translations["pt"] {
+// Tipo de retorno por idioma: com typeof translations["pt"] o tsc recusava o
+// norueguês (os textos são literais diferentes).
+export function t(sessionId?: string): (typeof translations)[Lang] {
   return translations[getLang(sessionId)];
 }

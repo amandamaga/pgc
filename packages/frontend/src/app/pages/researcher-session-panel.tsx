@@ -26,6 +26,10 @@ const stageLabels: Record<Stage, string> = {
   COMPLETED: "Concluído",
 };
 
+// Atualização automática do painel e nova tentativa depois de um erro.
+const REFRESH_MS = 2000;
+const RETRY_MS = 3000;
+
 const dateFormat = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
   timeStyle: "short",
@@ -47,6 +51,8 @@ function SessionPanelView({ sessionId }: { sessionId: string }) {
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [exporting, setExporting] = useState<SessionExportKind | null>(null);
   const [exportError, setExportError] = useState("");
+  // true enquanto o painel está esperando para tentar de novo depois de um erro.
+  const [retrying, setRetrying] = useState(false);
 
   async function handleExport(kind: SessionExportKind) {
     if (exporting) return;
@@ -71,21 +77,32 @@ function SessionPanelView({ sessionId }: { sessionId: string }) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     async function load() {
       setLoading(true);
-      setError("");
       try {
         const data = await getSessionPanel(sessionId, controller.signal);
         if (controller.signal.aborted) return;
         setPanel(data);
+        setError("");
+        setRetrying(false);
         setUpdatedAt(new Date().toISOString());
-        if (data.session.status !== "COMPLETED") timer = setTimeout(() => { void load(); }, 2000);
+        if (data.session.status !== "COMPLETED") timer = setTimeout(() => { void load(); }, REFRESH_MS);
       } catch (err) {
         if (controller.signal.aborted) return;
         if (err instanceof ResearcherApiError && err.status === 401) {
           navigate("/login", { replace: true });
           return;
         }
-        if (err instanceof ResearcherApiError && (err.status === 403 || err.status === 404)) setPanel(null);
         setError(err instanceof Error ? err.message : "Não foi possível atualizar o painel.");
+        if (err instanceof ResearcherApiError && (err.status === 403 || err.status === 404)) {
+          // Sessão inexistente ou de outra pesquisadora: tentar de novo não resolve.
+          setPanel(null);
+          setRetrying(false);
+          return;
+        }
+        // Erro de rede ou servidor acordando (o Render hiberna): o painel segue
+        // tentando sozinho. Antes ele congelava até alguém clicar em
+        // "Atualizar painel" (prometido no tutorial de 17/09, "Próxima versão").
+        setRetrying(true);
+        timer = setTimeout(() => { void load(); }, RETRY_MS);
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -121,6 +138,7 @@ function SessionPanelView({ sessionId }: { sessionId: string }) {
           <AlertDescription className="flex flex-col items-start gap-2">
             <span>{error}</span>
             {panel && <span>Os dados abaixo são da última atualização bem-sucedida.</span>}
+            {retrying && <span>O painel continua tentando sozinho a cada poucos segundos.</span>}
             <Button variant="outline" size="sm" onClick={() => setRevision((value) => value + 1)}>
               Tentar novamente
             </Button>
