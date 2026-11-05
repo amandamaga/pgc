@@ -77,4 +77,4 @@ export function DashboardLayout() {
       <Outlet />
     </div>
   );
-}
+}
