@@ -12,8 +12,18 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
+import { Trash2 } from "lucide-react";
 import { CreateSessionDialog } from "./create-session-dialog";
-import { listSessions, ResearcherApiError, type ResearcherSession } from "../lib/researcher-api";
+import { deleteSession, listSessions, ResearcherApiError, type ResearcherSession } from "../lib/researcher-api";
 
 const statuses = {
   WAITING: { label: "Aguardando início", variant: "outline" },
@@ -33,6 +43,41 @@ export function ResearcherSessions() {
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const refresh = () => setRevision((value) => value + 1);
+
+  // Apagar sessão: só "Aguardando início", que ainda não tem dado de criança
+  // (o servidor recusa as iniciadas com 409). Prometido no tutorial de 17/09.
+  const [toDelete, setToDelete] = useState<ResearcherSession | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function confirmDelete() {
+    if (!toDelete) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteSession(toDelete.id);
+      setNotice(`Sessão "${toDelete.name}" apagada.`);
+      setToDelete(null);
+      refresh();
+    } catch (err) {
+      if (err instanceof ResearcherApiError && err.status === 401) {
+        navigate("/login", { replace: true });
+        return;
+      }
+      if (err instanceof ResearcherApiError && err.status === 409) {
+        setDeleteError("Esta sessão já foi iniciada e não pode mais ser apagada.");
+        refresh();
+      } else if (err instanceof ResearcherApiError && err.status === 404) {
+        setDeleteError("Esta sessão não existe mais. A lista foi atualizada.");
+        refresh();
+      } else {
+        setDeleteError(err instanceof Error ? err.message : "Não foi possível apagar a sessão.");
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -74,6 +119,10 @@ export function ResearcherSessions() {
         </div>
       </div>
 
+      {notice && (
+        <p role="status" className="text-muted-foreground mb-3 text-sm">{notice}</p>
+      )}
+
       <Card>
         <CardContent className="py-6">
           {error ? (
@@ -101,6 +150,7 @@ export function ResearcherSessions() {
                   <TableHead>Status</TableHead>
                   <TableHead>Criada em</TableHead>
                   <TableHead>Sequência</TableHead>
+                  <TableHead className="w-0"><span className="sr-only">Ações</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -111,6 +161,7 @@ export function ResearcherSessions() {
                         <TableCell><Skeleton className="h-5 w-28" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-28" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-14" /></TableCell>
+                        <TableCell />
                       </TableRow>
                     ))
                   : sessions.map((session) => {
@@ -143,6 +194,26 @@ export function ResearcherSessions() {
                           </TableCell>
                           <TableCell>{dateFormat.format(new Date(session.createdAt))}</TableCell>
                           <TableCell>{session.sequenceVariant}</TableCell>
+                          <TableCell className="text-right">
+                            {session.status === "WAITING" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                aria-label={`Apagar a sessão ${session.name}`}
+                                onClick={(event) => {
+                                  // Não abre a sessão ao clicar no botão da linha.
+                                  event.stopPropagation();
+                                  setDeleteError("");
+                                  setNotice("");
+                                  setToDelete(session);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" aria-hidden />
+                                Apagar
+                              </Button>
+                            )}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -151,6 +222,33 @@ export function ResearcherSessions() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={toDelete !== null}
+        onOpenChange={(open) => { if (!open && !deleting) setToDelete(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar a sessão?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A sessão <strong>{toDelete?.name}</strong> e os participantes cadastrados nela serão
+              apagados. Ela ainda não foi iniciada, então nenhuma resposta de criança é perdida.
+              Não dá para desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && (
+            <p role="alert" className="text-destructive text-sm">{deleteError}</p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Voltar</AlertDialogCancel>
+            {/* Button comum (não AlertDialogAction): a janela só fecha depois
+                que o servidor confirma, e mostra o erro se ele recusar. */}
+            <Button variant="destructive" disabled={deleting || !!deleteError} onClick={() => { void confirmDelete(); }}>
+              {deleting ? "Apagando..." : "Apagar sessão"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

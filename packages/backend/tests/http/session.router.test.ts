@@ -14,6 +14,7 @@ vi.mock('../../src/services/session.service', () => ({
   listSessions:         vi.fn(),
   getSessionPanel:      vi.fn(),
   getParticipantAccess: vi.fn(),
+  deleteSession:        vi.fn(),
 }));
 
 vi.mock('../../src/services/export.service', () => ({
@@ -341,6 +342,42 @@ describe('POST /sessions/:sessionId/start', () => {
       new SessionBootstrapError('Session sess-001 requer exatamente P1 e P2.')
     );
     const res = await request(app).post('/sessions/sess-001/start').set('Authorization', BEARER).send();
+    expect(res.status).toBe(409);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /sessions/:sessionId
+// ---------------------------------------------------------------------------
+
+describe('DELETE /sessions/:sessionId', () => {
+  it('401 sem token', async () => {
+    const res = await request(app).delete('/sessions/sess-001');
+    expect(res.status).toBe(401);
+    expect(sessionService.deleteSession).not.toHaveBeenCalled();
+  });
+
+  it('200 com { id } e researcherId vindo do JWT', async () => {
+    vi.mocked(sessionService.deleteSession).mockResolvedValue({ id: 'sess-001' });
+    const res = await request(app).delete('/sessions/sess-001').set('Authorization', BEARER);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: 'sess-001' });
+    expect(sessionService.deleteSession).toHaveBeenCalledWith('sess-001', RES_ID);
+  });
+
+  it('404 quando inexistente ou de outra pesquisadora', async () => {
+    vi.mocked(sessionService.deleteSession).mockRejectedValue(
+      new SessionBootstrapError('Session não encontrada: sess-001')
+    );
+    const res = await request(app).delete('/sessions/sess-001').set('Authorization', BEARER);
+    expect(res.status).toBe(404);
+  });
+
+  it('409 quando a sessão já foi iniciada', async () => {
+    vi.mocked(sessionService.deleteSession).mockRejectedValue(
+      new SessionBootstrapError('Session sess-001 já foi iniciada e não pode ser apagada (status atual: COMPLETED).')
+    );
+    const res = await request(app).delete('/sessions/sess-001').set('Authorization', BEARER);
     expect(res.status).toBe(409);
   });
 });
