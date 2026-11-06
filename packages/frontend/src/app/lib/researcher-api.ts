@@ -119,6 +119,11 @@ export function startSession(sessionId: string) {
   return researcherRequest<Omit<ResearcherSession, "_count">>(`/sessions/${encodeURIComponent(sessionId)}/start`, { method: "POST" });
 }
 
+// Só sessões em "Aguardando início": o servidor recusa as iniciadas com 409.
+export function deleteSession(sessionId: string) {
+  return researcherRequest<{ id: string }>(`/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+}
+
 export function getSession(sessionId: string, signal?: AbortSignal) {
   return researcherRequest<SessionDetails>(`/sessions/${encodeURIComponent(sessionId)}`, { signal, cache: "no-store" });
 }

@@ -7,7 +7,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 vi.mock('../../src/config/prisma', () => ({
   prisma: {
-    session:            { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+    session:            { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), deleteMany: vi.fn() },
     sessionParticipant: { create: vi.fn(), findMany: vi.fn() },
     trialTemplate:      { findMany: vi.fn() },
     attempt:            { createMany: vi.fn(), findFirst: vi.fn() },
@@ -436,5 +436,49 @@ describe('getParticipantAccess — dados retornados', () => {
     const result = await getParticipantAccess(SESS_ID, RES_A);
     const keys = Object.keys(result[0]).sort();
     expect(keys).toEqual(['accessToken', 'displayName', 'participantCode', 'slot']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteSession — só WAITING, valida ownership, DELETE condicionado ao status
+// ---------------------------------------------------------------------------
+
+import { deleteSession } from '../../src/services/session.service';
+
+describe('deleteSession', () => {
+  it('apaga sessão em WAITING da própria pesquisadora, com o status na condição do DELETE', async () => {
+    vi.mocked(prisma.session.findUnique).mockResolvedValue(sessionOfA as never);
+    vi.mocked(prisma.session.deleteMany).mockResolvedValue({ count: 1 } as never);
+    await expect(deleteSession(SESS_ID, RES_A)).resolves.toEqual({ id: SESS_ID });
+    expect(prisma.session.deleteMany).toHaveBeenCalledWith({
+      where: { id: SESS_ID, researcherId: RES_A, status: 'WAITING' },
+    });
+  });
+
+  it('lança "não encontrada" se a sessão pertence a outra pesquisadora, sem apagar', async () => {
+    vi.mocked(prisma.session.findUnique).mockResolvedValue(sessionOfA as never);
+    await expect(deleteSession(SESS_ID, RES_B)).rejects.toThrow(/não encontrada/);
+    expect(prisma.session.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('lança "não encontrada" se a sessão não existe', async () => {
+    vi.mocked(prisma.session.findUnique).mockResolvedValue(null as never);
+    await expect(deleteSession(SESS_ID, RES_A)).rejects.toThrow(/não encontrada/);
+    expect(prisma.session.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['IN_PROGRESS', 'COMPLETED'])('recusa sessão %s (tem dado de criança), sem apagar', async (status) => {
+    vi.mocked(prisma.session.findUnique).mockResolvedValue({ ...sessionOfA, status } as never);
+    const err = await deleteSession(SESS_ID, RES_A).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SessionBootstrapError);
+    expect((err as Error).message).toMatch(/já foi iniciada/);
+    expect((err as Error).message).not.toMatch(/não encontrada/); // vira 409, não 404
+    expect(prisma.session.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('recusa se a sessão foi iniciada entre a leitura e o DELETE (nada apagado)', async () => {
+    vi.mocked(prisma.session.findUnique).mockResolvedValue(sessionOfA as never);
+    vi.mocked(prisma.session.deleteMany).mockResolvedValue({ count: 0 } as never);
+    await expect(deleteSession(SESS_ID, RES_A)).rejects.toThrow(/já foi iniciada/);
   });
 });

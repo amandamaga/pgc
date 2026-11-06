@@ -8,6 +8,7 @@
  *   startSession     — transição WAITING → IN_PROGRESS + cria 64 Attempts, valida ownership
  *   getSession       — retorna sessão com participantes e contagem, valida ownership
  *   listSessions     — lista sessões da pesquisadora autenticada
+ *   deleteSession    — apaga sessão ainda em WAITING (sem dado de criança), valida ownership
  */
 
 import { Prisma } from '@prisma/client';
@@ -159,6 +160,35 @@ export async function listSessions(researcherId: string) {
       _count: { select: { attempts: true } },
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// deleteSession
+// Só sessões em WAITING: ainda não têm tentativas nem respostas de criança,
+// então apagar não perde dado de pesquisa (decisão da equipe, 06/11/2026;
+// prometido no tutorial da pesquisadora de 17/09). Os participantes
+// cadastrados saem junto (onDelete: Cascade em SessionParticipant).
+// ---------------------------------------------------------------------------
+
+export async function deleteSession(sessionId: string, researcherId: string) {
+  const session = await loadOwnedSession(prisma, sessionId, researcherId);
+  if (session.status !== 'WAITING') {
+    throw new SessionBootstrapError(
+      `Session ${sessionId} já foi iniciada e não pode ser apagada (status atual: ${session.status}).`
+    );
+  }
+
+  // A condição de status vai no próprio DELETE: se a sessão for iniciada entre
+  // a leitura acima e este comando, nada é apagado.
+  const { count } = await prisma.session.deleteMany({
+    where: { id: sessionId, researcherId, status: 'WAITING' },
+  });
+  if (count === 0) {
+    throw new SessionBootstrapError(
+      `Session ${sessionId} já foi iniciada e não pode ser apagada.`
+    );
+  }
+  return { id: sessionId };
 }
 
 // ---------------------------------------------------------------------------

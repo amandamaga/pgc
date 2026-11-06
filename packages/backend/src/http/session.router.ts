@@ -9,6 +9,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import {
   addParticipant,
   createSession,
+  deleteSession,
   getSession,
   getSessionPanel,
   getParticipantAccess,
@@ -125,6 +126,22 @@ sessionRouter.get('/:sessionId', async (req: Request, res: Response, next: NextF
       return;
     }
     res.status(200).json(session);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /sessions/:sessionId — só sessões em WAITING (sem dado de criança)
+// 200 { id } · 404 inexistente ou de outra pesquisadora · 409 já iniciada.
+// Responde 200 com corpo (não 204) porque o cliente do front exige JSON.
+// ---------------------------------------------------------------------------
+
+sessionRouter.delete('/:sessionId', async (req: Request, res: Response, next: NextFunction) => {
+  const sessionId = req.params['sessionId'] as string;
+  try {
+    const deleted = await deleteSession(sessionId, req.researcherId!);
+    res.status(200).json(deleted);
   } catch (err) {
     next(err);
   }
