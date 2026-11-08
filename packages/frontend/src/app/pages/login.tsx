@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { FlaskConical } from "lucide-react";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
@@ -112,7 +112,10 @@ export function LoginPage() {
         </Card>
 
         <p className="text-muted-foreground mt-6 text-center text-sm">
-          O acesso é criado pela equipe de pesquisa.
+          Não tem conta?{" "}
+          <Link to="/register" className="text-foreground font-medium underline underline-offset-4">
+            Criar conta
+          </Link>
         </p>
       </div>
     </div>
