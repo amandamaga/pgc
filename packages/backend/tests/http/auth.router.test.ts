@@ -1,6 +1,6 @@
 /**
  * auth.router.test.ts
- * Testes HTTP de /auth/login e /auth/me com services mockados.
+ * Testes HTTP de /auth/login, /auth/me, /auth/registration e /auth/register com services mockados.
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -8,9 +8,11 @@ import request from 'supertest';
 import { app } from '../../src/http/app';
 
 vi.mock('../../src/services/auth.service', () => ({
-  login:         vi.fn(),
-  verifyToken:   vi.fn(),
-  getResearcher: vi.fn(),
+  login:              vi.fn(),
+  verifyToken:        vi.fn(),
+  getResearcher:      vi.fn(),
+  isRegistrationOpen: vi.fn(),
+  register:           vi.fn(),
 }));
 
 // Mocks das outras rotas para isolar app.ts
@@ -27,6 +29,7 @@ vi.mock('../../src/services/response.service', () => ({
 
 import * as authService from '../../src/services/auth.service';
 import { SessionBootstrapError } from '../../src/services/session.drafts';
+import { RegistrationError } from '../../src/services/registration.error';
 
 const BEARER = 'Bearer valid.jwt.token';
 
@@ -158,6 +161,123 @@ describe('GET /auth/me', () => {
     vi.mocked(authService.verifyToken).mockReturnValue('res-001');
     vi.mocked(authService.getResearcher).mockRejectedValue(new Error('DB down'));
     const res = await request(app).get('/auth/me').set('Authorization', BEARER);
+    expect(res.status).toBe(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /auth/registration
+// ---------------------------------------------------------------------------
+
+describe('GET /auth/registration', () => {
+  it('200 { open: true } quando o cadastro está aberto, sem cache', async () => {
+    vi.mocked(authService.isRegistrationOpen).mockReturnValue(true);
+    const res = await request(app).get('/auth/registration');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ open: true });
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('200 { open: false } quando o cadastro está fechado', async () => {
+    vi.mocked(authService.isRegistrationOpen).mockReturnValue(false);
+    const res = await request(app).get('/auth/registration');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ open: false });
+  });
+
+  it('não exige Authorization', async () => {
+    vi.mocked(authService.isRegistrationOpen).mockReturnValue(true);
+    const res = await request(app).get('/auth/registration');
+    expect(res.status).toBe(200);
+    expect(authService.verifyToken).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/register
+// ---------------------------------------------------------------------------
+
+const mockRegisterResult = {
+  token: 'signed.jwt.token',
+  researcher: { id: 'res-new', name: 'Marina Costa', email: 'marina@exemplo.br' },
+};
+
+describe('POST /auth/register', () => {
+  it('201 — devolve token e researcher, repassando os campos ao service', async () => {
+    vi.mocked(authService.register).mockResolvedValue(mockRegisterResult);
+    const res = await request(app).post('/auth/register')
+      .send({ name: 'Marina Costa', email: 'marina@exemplo.br', password: 'senha123' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.token).toBe('signed.jwt.token');
+    expect(res.body.researcher.id).toBe('res-new');
+    expect(res.body.researcher.passwordHash).toBeUndefined();
+    expect(authService.register).toHaveBeenCalledWith('Marina Costa', 'marina@exemplo.br', 'senha123');
+  });
+
+  it('não exige Authorization', async () => {
+    vi.mocked(authService.register).mockResolvedValue(mockRegisterResult);
+    const res = await request(app).post('/auth/register')
+      .send({ name: 'Marina Costa', email: 'marina@exemplo.br', password: 'senha123' });
+    expect(res.status).toBe(201);
+    expect(authService.verifyToken).not.toHaveBeenCalled();
+  });
+
+  it('403 quando o cadastro está fechado', async () => {
+    vi.mocked(authService.register).mockRejectedValue(
+      new RegistrationError(403, 'O cadastro está fechado no momento.'),
+    );
+    const res = await request(app).post('/auth/register')
+      .send({ name: 'Marina Costa', email: 'marina@exemplo.br', password: 'senha123' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('O cadastro está fechado no momento.');
+  });
+
+  it('400 com a mensagem de validação do service', async () => {
+    vi.mocked(authService.register).mockRejectedValue(
+      new RegistrationError(400, 'A senha precisa ter pelo menos 8 caracteres.'),
+    );
+    const res = await request(app).post('/auth/register')
+      .send({ name: 'Marina Costa', email: 'marina@exemplo.br', password: '123' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/pelo menos 8/);
+  });
+
+  it('409 para e-mail já cadastrado', async () => {
+    vi.mocked(authService.register).mockRejectedValue(
+      new RegistrationError(409, 'Este e-mail já tem cadastro. Tente entrar.'),
+    );
+    const res = await request(app).post('/auth/register')
+      .send({ name: 'Marina Costa', email: 'marina@exemplo.br', password: 'senha123' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/já tem cadastro/);
+  });
+
+  it('sem body — o service recebe undefined e decide a resposta', async () => {
+    vi.mocked(authService.register).mockRejectedValue(new RegistrationError(400, 'Informe seu nome.'));
+    const res = await request(app).post('/auth/register');
+
+    expect(res.status).toBe(400);
+    expect(authService.register).toHaveBeenCalledWith(undefined, undefined, undefined);
+  });
+
+  it('400 para JSON malformado', async () => {
+    const res = await request(app).post('/auth/register')
+      .set('Content-Type', 'application/json')
+      .send('{nome: ');
+    expect(res.status).toBe(400);
+    expect(authService.register).not.toHaveBeenCalled();
+  });
+
+  it('500 para erro inesperado', async () => {
+    vi.mocked(authService.register).mockRejectedValue(new Error('boom'));
+    const res = await request(app).post('/auth/register')
+      .send({ name: 'Marina Costa', email: 'marina@exemplo.br', password: 'senha123' });
     expect(res.status).toBe(500);
   });
 });

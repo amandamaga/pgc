@@ -16,4 +16,6 @@ export const env = {
   databaseUrl: required("DATABASE_URL"),
   jwtSecret:   required("JWT_SECRET"),
   nodeEnv:    process.env.NODE_ENV ?? "development",
+  // Cadastro aberto só com REGISTRATION_OPEN=true; ausente ou qualquer outro valor = fechado.
+  registrationOpen: process.env.REGISTRATION_OPEN?.trim().toLowerCase() === "true",
 };
