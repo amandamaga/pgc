@@ -4,25 +4,13 @@
  *
  * Fonte original: G1_P1_24_10_2024.xlsx — aba G1P1.
  *
- * ASSUNÇÃO DO MVP:
- * A ordem dos 64 estímulos (blockNumber × trialInBlock → Stimulus) é assumida
- * idêntica nas variantes ABAC, ACAB, BCBC e CBCB. O que muda entre variantes é
- * apenas a sequência de condições dos 4 blocos. Esta assunção foi adotada por
- * ausência dos arquivos originais das demais variantes e deve ser revisada
- * quando esses arquivos estiverem disponíveis.
+ * ESTÍMULOS POR POSIÇÃO (confirmado com a pesquisadora em 10/11/2026):
+ * O estímulo de cada tentativa depende só da posição (blockNumber ×
+ * trialInBlock), não da condição do bloco. Por isso há 64 TrialTemplates, que
+ * valem para qualquer sequência de condições escolhida na sessão.
  *
- * Este módulo não importa Prisma. É puro TypeScript sem dependências externas,
- * exceto pelo import de SEQUENCE_MAP do domínio validado.
+ * Este módulo não importa Prisma. É puro TypeScript sem dependências externas.
  */
-
-import { SEQUENCE_MAP, type SequenceVariant } from '../domain/experiment.types';
-
-// ---------------------------------------------------------------------------
-// Variantes derivadas do domínio — única fonte de verdade para ABAC|ACAB|BCBC|CBCB
-// ---------------------------------------------------------------------------
-
-export type { SequenceVariant };
-export const VARIANTS = Object.keys(SEQUENCE_MAP) as SequenceVariant[];
 
 // ---------------------------------------------------------------------------
 // Pares fixos de personagens (protocolo experimental)
@@ -131,7 +119,6 @@ export type StimulusDescriptor = {
 };
 
 export type TrialTemplateDescriptor = {
-  sequenceVariant: SequenceVariant;
   blockNumber: number;
   trialInBlock: number;
   stimulusKey: string;
@@ -176,23 +163,12 @@ export function buildStimulusDescriptors(): StimulusDescriptor[] {
 }
 
 /**
- * Gera os 256 descritores de TrialTemplate (4 variantes × 64 posições).
- * Cada posição (blockNumber, trialInBlock) aponta para a mesma chave de Stimulus
- * em todas as variantes — assunção MVP de ordem compartilhada.
+ * Gera os 64 descritores de TrialTemplate (um por posição bloco × tentativa).
  */
 export function buildTrialTemplateDescriptors(): TrialTemplateDescriptor[] {
-  const result: TrialTemplateDescriptor[] = [];
-
-  for (const variant of VARIANTS) {
-    for (const [blockNumber, trialInBlock, dist, , dDist, rDist] of RAW_STIMULI) {
-      result.push({
-        sequenceVariant: variant,
-        blockNumber,
-        trialInBlock,
-        stimulusKey: `${dist}|${dDist}|${rDist}`,
-      });
-    }
-  }
-
-  return result;
+  return RAW_STIMULI.map(([blockNumber, trialInBlock, dist, , dDist, rDist]) => ({
+    blockNumber,
+    trialInBlock,
+    stimulusKey: `${dist}|${dDist}|${rDist}`,
+  }));
 }

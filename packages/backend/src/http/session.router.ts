@@ -17,7 +17,12 @@ import {
   startSession,
 } from '../services/session.service';
 import { researcherAuth } from './researcher-auth.middleware';
-import { type SequenceVariant } from '../domain/experiment.types';
+import {
+  isBlockConditions,
+  SEQUENCE_PRESETS,
+  type BlockConditions,
+  type SequencePreset,
+} from '../domain/experiment.types';
 import { buildExportRows } from '../services/export.service';
 import { serializeExportCsv } from '../services/export.csv';
 import { serializeModelExportCsv } from '../services/export.model.csv';
@@ -27,7 +32,6 @@ export const sessionRouter = Router();
 // Todas as rotas exigem JWT válido da pesquisadora
 sessionRouter.use(researcherAuth);
 
-const VALID_VARIANTS: SequenceVariant[] = ['ABAC', 'ACAB', 'BCBC', 'CBCB'];
 const VALID_SLOTS = ['P1', 'P2'];
 
 // ---------------------------------------------------------------------------
@@ -45,23 +49,46 @@ sessionRouter.get('/', async (req: Request, res: Response, next: NextFunction) =
 
 // ---------------------------------------------------------------------------
 // POST /sessions
+// Body: { name, blockConditions: ['A','B','A','C'] } — condição de cada um dos
+// 4 blocos, qualquer combinação de A, B e C, com repetição.
+// Transição (F8): também aceita { name, sequenceVariant: 'ABAC' | 'ACAB' |
+// 'BCBC' | 'CBCB' }, convertido pelo atalho, para o frontend anterior não
+// quebrar entre os deploys. Se os dois vierem, vale blockConditions.
 // ---------------------------------------------------------------------------
 
+const BLOCK_CONDITIONS_ERROR =
+  'blockConditions deve ter 4 condições, cada uma A, B ou C (ex.: ["A","B","A","C"]).';
+
+function resolveBlockConditions(body: Record<string, unknown>): BlockConditions | null {
+  if (body['blockConditions'] !== undefined) {
+    return isBlockConditions(body['blockConditions'])
+      ? ([...body['blockConditions']] as BlockConditions)
+      : null;
+  }
+  const preset = body['sequenceVariant'];
+  if (typeof preset === 'string' && Object.hasOwn(SEQUENCE_PRESETS, preset)) {
+    return [...SEQUENCE_PRESETS[preset as SequencePreset]] as BlockConditions;
+  }
+  return null;
+}
+
 sessionRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
-  const { name, sequenceVariant } = req.body ?? {};
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const { name } = body;
   // researcherId vem do JWT — body.researcherId é ignorado
 
   if (!name || typeof name !== 'string') {
     res.status(400).json({ error: 'name é obrigatório.' });
     return;
   }
-  if (!sequenceVariant || !VALID_VARIANTS.includes(sequenceVariant)) {
-    res.status(400).json({ error: `sequenceVariant deve ser um de: ${VALID_VARIANTS.join(', ')}.` });
+  const blockConditions = resolveBlockConditions(body);
+  if (!blockConditions) {
+    res.status(400).json({ error: BLOCK_CONDITIONS_ERROR });
     return;
   }
 
   try {
-    const session = await createSession(req.researcherId!, name, sequenceVariant as SequenceVariant);
+    const session = await createSession(req.researcherId!, name, blockConditions);
     res.status(201).json(session);
   } catch (err) {
     next(err);

@@ -28,7 +28,7 @@ const OTHER_RES = 'res-OTHER';
 
 const mockSession = {
   id: SESS_ID, researcherId: RES_ID,
-  name: 'Turma A', sequenceVariant: 'ABAC', status: 'COMPLETED',
+  name: 'Turma A', blockConditions: ['A', 'B', 'A', 'C'], status: 'COMPLETED',
 };
 
 const mockP1 = { id: 'sp-p1', slot: 'P1', participantCode: 'G1P1' };
@@ -269,7 +269,7 @@ describe('buildExportRows — TrialRecord ausente', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildExportRows — linha completa', () => {
-  it('preenche todos os 43 campos corretamente', async () => {
+  it('preenche todos os 44 campos corretamente', async () => {
     vi.mocked(prisma.session.findUnique).mockResolvedValue(mockSession as never);
     vi.mocked(prisma.sessionParticipant.findMany).mockResolvedValue([mockP1, mockP2] as never);
     vi.mocked(prisma.attempt.findMany).mockResolvedValue([
@@ -283,14 +283,14 @@ describe('buildExportRows — linha completa', () => {
     ] as never);
     const [row] = await buildExportRows(SESS_ID, RES_ID);
 
-    // A linha tem exatamente as 43 chaves de EXPORT_COLUMNS, nem mais nem menos.
-    expect(EXPORT_COLUMNS.length).toBe(43);
+    // A linha tem exatamente as 44 chaves de EXPORT_COLUMNS, nem mais nem menos.
+    expect(EXPORT_COLUMNS.length).toBe(44);
     expect(Object.keys(row).sort()).toEqual([...EXPORT_COLUMNS].sort());
 
     // Sessão
     expect(row.sessionId).toBe(SESS_ID);
     expect(row.sessionName).toBe('Turma A');
-    expect(row.sequenceVariant).toBe('ABAC');
+    expect(row.blockSequence).toBe('A1-B2-A3-C4');
     expect(row.sessionStatus).toBe('COMPLETED');
     expect(row.p1ParticipantCode).toBe('G1P1');
     expect(row.p2ParticipantCode).toBe('G1P2');
@@ -298,6 +298,7 @@ describe('buildExportRows — linha completa', () => {
     // Posição e estímulo
     expect(row.globalNumber).toBe(1);
     expect(row.blockNumber).toBe(1);
+    expect(row.blockLabel).toBe('A1');
     expect(row.trialInBlock).toBe(1);
     expect(row.condition).toBe('A');
     expect(row.endowment).toBe(32);
@@ -592,5 +593,39 @@ describe('buildExportRows — participantes ausentes com Attempts', () => {
     vi.mocked(prisma.attempt.findMany).mockResolvedValue([makeAttempt()] as never);
     await expect(buildExportRows(SESS_ID, RES_ID)).rejects.toThrow(SessionBootstrapError);
     await expect(buildExportRows(SESS_ID, RES_ID)).rejects.toThrow(/P1.*P2|P2.*P1/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F8 — sequência livre: rótulo do bloco e ordem da sessão
+// ---------------------------------------------------------------------------
+
+describe('buildExportRows — sequência livre (F8)', () => {
+  it('sessão AABB: blockSequence A1-A2-B3-B4 e blockLabel por tentativa', async () => {
+    vi.mocked(prisma.session.findUnique).mockResolvedValue(
+      { ...mockSession, blockConditions: ['A', 'A', 'B', 'B'] } as never,
+    );
+    vi.mocked(prisma.sessionParticipant.findMany).mockResolvedValue([mockP1, mockP2] as never);
+    vi.mocked(prisma.attempt.findMany).mockResolvedValue([
+      makeAttempt({ id: 'a1', globalNumber: 1,  blockNumber: 1, condition: 'A' }),
+      makeAttempt({ id: 'a2', globalNumber: 17, blockNumber: 2, condition: 'A' }),
+      makeAttempt({ id: 'a3', globalNumber: 33, blockNumber: 3, condition: 'B' }),
+      makeAttempt({ id: 'a4', globalNumber: 49, blockNumber: 4, condition: 'B' }),
+    ] as never);
+
+    const rows = await buildExportRows(SESS_ID, RES_ID);
+    expect(rows.map(r => r.blockSequence)).toEqual(Array(4).fill('A1-A2-B3-B4'));
+    expect(rows.map(r => r.blockLabel)).toEqual(['A1', 'A2', 'B3', 'B4']);
+    expect(rows.map(r => r.condition)).toEqual(['A', 'A', 'B', 'B']);
+  });
+
+  it('seleciona blockConditions da sessão (não sequenceVariant)', async () => {
+    vi.mocked(prisma.session.findUnique).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.sessionParticipant.findMany).mockResolvedValue([mockP1, mockP2] as never);
+    vi.mocked(prisma.attempt.findMany).mockResolvedValue([] as never);
+    await buildExportRows(SESS_ID, RES_ID);
+    const select = vi.mocked(prisma.session.findUnique).mock.calls.at(-1)![0]!.select as Record<string, unknown>;
+    expect(select['blockConditions']).toBe(true);
+    expect(select['sequenceVariant']).toBeUndefined();
   });
 });

@@ -17,12 +17,12 @@ const NOW = new Date('2024-10-24T10:00:00.000Z');
 /** Posição (0-based) de uma coluna na linha CSV — sem índices contados à mão. */
 const col = (name: typeof EXPORT_COLUMNS[number]) => EXPORT_COLUMNS.indexOf(name);
 
-/** Linha completa com valores não-nulos para todos os 43 campos */
+/** Linha completa com valores não-nulos para todos os 44 campos */
 function makeCompleteRow(overrides: Partial<ExportRow> = {}): ExportRow {
   return {
     sessionId:               'sess-001',
     sessionName:             'Turma A',
-    sequenceVariant:         'ABAC',
+    blockSequence:           'A1-B2-A3-C4',
     sessionStatus:           'COMPLETED',
     p1ParticipantCode:       'G1P1',
     p2ParticipantCode:       'G1P2',
@@ -30,6 +30,7 @@ function makeCompleteRow(overrides: Partial<ExportRow> = {}): ExportRow {
     blockNumber:             1,
     trialInBlock:            1,
     condition:               'A',
+    blockLabel:              'A1',
     endowment:               32,
     distributorCharacter:    'Lucas',
     receptorCharacter:       'Isaac',
@@ -68,14 +69,14 @@ function makeCompleteRow(overrides: Partial<ExportRow> = {}): ExportRow {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Cabeçalho: 43 colunas na ordem exata de EXPORT_COLUMNS
+// 1. Cabeçalho: 44 colunas na ordem exata de EXPORT_COLUMNS
 // ---------------------------------------------------------------------------
 
-/** Ordem científica esperada, escrita por extenso (F1.4: 39 → 43 colunas). */
+/** Ordem científica esperada, escrita por extenso (F1.4: 39 → 43; F8: 43 → 44 colunas). */
 const EXPECTED_SCIENTIFIC_ORDER = [
   'sessionId',
   'sessionName',
-  'sequenceVariant',
+  'blockSequence',
   'sessionStatus',
   'p1ParticipantCode',
   'p2ParticipantCode',
@@ -83,6 +84,7 @@ const EXPECTED_SCIENTIFIC_ORDER = [
   'blockNumber',
   'trialInBlock',
   'condition',
+  'blockLabel',
   'endowment',
   'distributorCharacter',
   'receptorCharacter',
@@ -119,15 +121,15 @@ const EXPECTED_SCIENTIFIC_ORDER = [
 ] as const;
 
 describe('serializeExportCsv — cabeçalho', () => {
-  it('primeira linha é o cabeçalho com as 43 colunas', () => {
+  it('primeira linha é o cabeçalho com as 44 colunas', () => {
     const csv = serializeExportCsv([]);
     expect(csv).toBe(EXPORT_COLUMNS.join(','));
   });
 
-  it('cabeçalho contém exatamente 43 campos', () => {
+  it('cabeçalho contém exatamente 44 campos', () => {
     const [header] = serializeExportCsv([makeCompleteRow()]).split('\n');
-    expect(header.split(',').length).toBe(43);
-    expect(EXPORT_COLUMNS.length).toBe(43);
+    expect(header.split(',').length).toBe(44);
+    expect(EXPORT_COLUMNS.length).toBe(44);
   });
 
   it('EXPORT_COLUMNS segue exatamente a ordem científica especificada', () => {
@@ -185,7 +187,7 @@ describe('serializeExportCsv — null', () => {
     const [, dataLine] = serializeExportCsv([row]).split('\n');
     expect(dataLine).not.toContain('null');
     const fields = dataLine.split(',');
-    expect(fields.length).toBe(43);
+    expect(fields.length).toBe(44);
     expect(fields[col('p1StoryShownAt')]).toBe('');
     expect(fields[col('p1NextStoryAvailableAt')]).toBe('');
     expect(fields[col('p2StoryShownAt')]).toBe('');
@@ -268,7 +270,7 @@ describe('serializeExportCsv — escaping: vírgulas', () => {
     expect(dataLine).toContain('"Turma A, G1"');
   });
 
-  it('campo com vírgula não quebra a contagem de 43 campos', () => {
+  it('campo com vírgula não quebra a contagem de 44 campos', () => {
     const row = makeCompleteRow({ sessionName: 'A, B, C' });
     const csv = serializeExportCsv([row]);
     const lines = csv.split('\n');
@@ -316,17 +318,17 @@ describe('serializeExportCsv — escaping: quebra de linha', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 8. Linha completa mantém 43 campos
+// 8. Linha completa mantém 44 campos
 // ---------------------------------------------------------------------------
 
 describe('serializeExportCsv — linha completa', () => {
-  it('linha de dados tem exatamente 43 campos separados por vírgula (sem escaping)', () => {
+  it('linha de dados tem exatamente 44 campos separados por vírgula (sem escaping)', () => {
     const row = makeCompleteRow(); // sem campos especiais
     const [, dataLine] = serializeExportCsv([row]).split('\n');
-    expect(dataLine.split(',').length).toBe(43);
+    expect(dataLine.split(',').length).toBe(44);
   });
 
-  it('linha completa: cada um dos 43 campos bate com o valor da sua coluna', () => {
+  it('linha completa: cada um dos 44 campos bate com o valor da sua coluna', () => {
     const row = makeCompleteRow({
       p1StoryShownAt:         new Date('2026-10-11T12:00:00.000Z'),
       p1NextStoryAvailableAt: new Date('2026-10-11T12:00:40.000Z'),
@@ -334,7 +336,7 @@ describe('serializeExportCsv — linha completa', () => {
       p2NextStoryAvailableAt: new Date('2026-10-11T12:00:42.000Z'),
     });
     const fields = serializeExportCsv([row]).split('\n')[1].split(',');
-    expect(fields.length).toBe(43);
+    expect(fields.length).toBe(44);
     EXPORT_COLUMNS.forEach((name, i) => {
       const v = (row as Record<string, unknown>)[name];
       const expected = v instanceof Date ? v.toISOString() : String(v);

@@ -10,27 +10,58 @@
 
 /**
  * As três condições base do protocolo.
- * Reexposições (A', B', C') usam as mesmas regras — não são condições distintas.
- * A camada de sessão passa a condição base; a lógica de regras não precisa saber
- * se é primeira ou segunda exposição.
+ * Uma condição repetida em outro bloco usa as mesmas regras — não é condição
+ * distinta. A camada de sessão passa a condição base; a lógica de regras não
+ * precisa saber se é primeira ou segunda exposição. Para distinguir as
+ * exposições nos dados, use o rótulo do bloco (blockLabel: 'A1', 'A3').
  */
 export type Condition = 'A' | 'B' | 'C';
 
-/**
- * Sequência de condições que define a variação do experimento.
- * Cada elemento é a condição base do bloco correspondente.
- * Experimento 1: ABAC e ACAB (4 blocos: A·B·A'·C e A·C·A'·B)
- * Experimento 2: BCBC e CBCB (4 blocos: B·C·B'·C' e C·B·C'·B')
- */
-export type SequenceVariant = 'ABAC' | 'ACAB' | 'BCBC' | 'CBCB';
+export const CONDITIONS: readonly Condition[] = ['A', 'B', 'C'];
 
-// Mapeamento de cada variante para suas 4 condições base, em ordem de bloco
-export const SEQUENCE_MAP: Record<SequenceVariant, [Condition, Condition, Condition, Condition]> = {
+/** Número fixo de blocos de uma sessão (16 tentativas cada, 64 no total). */
+export const BLOCK_COUNT = 4;
+
+/**
+ * Condição de cada um dos 4 blocos da sessão, em ordem (índice 0 = bloco 1).
+ * Escolhida pela pesquisadora ao criar a sessão: qualquer combinação de
+ * A, B e C, com repetição (ex.: ['A','B','A','C'], ['A','A','B','B']).
+ * Uma condição repetida usa as mesmas regras da primeira exposição.
+ */
+export type BlockConditions = [Condition, Condition, Condition, Condition];
+
+/**
+ * Atalhos para as sequências dos experimentos da tese (Experimento 1: ABAC e
+ * ACAB; Experimento 2: BCBC e CBCB). São só atalhos de preenchimento: a sessão
+ * guarda as 4 condições, não o nome do atalho.
+ */
+export type SequencePreset = 'ABAC' | 'ACAB' | 'BCBC' | 'CBCB';
+
+export const SEQUENCE_PRESETS: Record<SequencePreset, BlockConditions> = {
   ABAC: ['A', 'B', 'A', 'C'],
   ACAB: ['A', 'C', 'A', 'B'],
   BCBC: ['B', 'C', 'B', 'C'],
   CBCB: ['C', 'B', 'C', 'B'],
 };
+
+/** true se `value` é uma lista de exatamente 4 condições, cada uma A, B ou C. */
+export function isBlockConditions(value: unknown): value is BlockConditions {
+  return (
+    Array.isArray(value) &&
+    value.length === BLOCK_COUNT &&
+    value.every((c) => typeof c === 'string' && (CONDITIONS as readonly string[]).includes(c))
+  );
+}
+
+/** Rótulo do bloco: condição + número do bloco (ex.: 'A', 3 → 'A3'). */
+export function blockLabel(condition: Condition, blockNumber: number): string {
+  return `${condition}${blockNumber}`;
+}
+
+/** Sequência da sessão com o rótulo de cada bloco (ex.: 'A1-B2-A3-C4'). */
+export function formatBlockSequence(conditions: readonly Condition[]): string {
+  return conditions.map((c, i) => blockLabel(c, i + 1)).join('-');
+}
 
 // -----------------------------------------------------------------------------
 // Tipo de distribuição

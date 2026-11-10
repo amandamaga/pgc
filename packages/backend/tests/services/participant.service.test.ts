@@ -36,7 +36,7 @@ const mockSpBase = {
   joinedAt:        NOW,
   lastSeenAt:      NOW,
   createdAt:       NOW,
-  session: { id: SESS_ID, name: 'Turma A', status: 'IN_PROGRESS', sequenceVariant: 'ABAC' },
+  session: { id: SESS_ID, name: 'Turma A', status: 'IN_PROGRESS', blockConditions: ['A', 'B', 'A', 'C'] },
 };
 
 const mockAttemptBase = {
@@ -605,13 +605,16 @@ describe('não expõe campos proibidos', () => {
     expect((result.participant as Record<string, unknown>).accessToken).toBeUndefined();
   });
 
-  it('session não expõe sequenceVariant', async () => {
+  it('session não expõe a ordem dos blocos (blockConditions/blockSequence)', async () => {
     vi.mocked(prisma.sessionParticipant.findUnique).mockResolvedValue(mockSpBase as never);
     vi.mocked(prisma.attempt.findFirst).mockResolvedValue(null as never);
 
     const result = await getParticipantState('tok-abc');
 
-    expect((result.session as Record<string, unknown>).sequenceVariant).toBeUndefined();
+    const session = result.session as Record<string, unknown>;
+    expect(session.blockConditions).toBeUndefined();
+    expect(session.blockSequence).toBeUndefined();
+    expect(session.sequenceVariant).toBeUndefined();
   });
 
   it('currentAttempt não expõe condition, blockNumber, globalNumber', async () => {

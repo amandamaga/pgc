@@ -44,10 +44,14 @@ export const MODEL_COLUMNS = [
 // Helpers de mapeamento
 // ---------------------------------------------------------------------------
 
-/** Condition: bloco 3 com condição A → Aa */
+/**
+ * Condition: rótulo do bloco — condição + número do bloco (ex.: A1, B2, A3, C4).
+ * Decisão de 10/11/2026 (F8): substitui o "Aa" fixo do bloco 3, porque a
+ * pesquisadora pode repetir qualquer condição em qualquer bloco.
+ * APtype e G.Coins continuam calculados pela condição base (row.condition).
+ */
 function mapCondition(row: ExportRow): string {
-  if (row.condition === 'A' && row.blockNumber === 3) return 'Aa';
-  return row.condition;
+  return row.blockLabel;
 }
 
 /** E/U baseado nas distribuições */
@@ -117,8 +121,8 @@ function mapD(culturant: string | null): string {
  * (shouldAwardCulturalConsequence), para que as duas regras nunca divirjam:
  *
  * - sem culturant          → vazio
- * - desacordo (D)          → A/Aa: 'D'  |  B/C: 'APd'
- * - consenso que gera CC   → A/Aa: 'APa' | B: 'APb' | C: 'APc'
+ * - desacordo (D)          → A:    'D'  |  B/C: 'APd'
+ * - consenso que gera CC   → A:    'APa' | B: 'APb' | C: 'APc'
  * - consenso que não gera  → 'APd'
  *
  * Rótulos do sistema (classifyCulturant):

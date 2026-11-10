@@ -14,7 +14,7 @@ describe('EXPORT_COLUMNS — ordem exata', () => {
   const EXPECTED_ORDER = [
     'sessionId',
     'sessionName',
-    'sequenceVariant',
+    'blockSequence',
     'sessionStatus',
     'p1ParticipantCode',
     'p2ParticipantCode',
@@ -22,6 +22,7 @@ describe('EXPORT_COLUMNS — ordem exata', () => {
     'blockNumber',
     'trialInBlock',
     'condition',
+    'blockLabel',
     'endowment',
     'distributorCharacter',
     'receptorCharacter',
@@ -57,8 +58,8 @@ describe('EXPORT_COLUMNS — ordem exata', () => {
     'attemptCompletedAt',
   ] as const;
 
-  it('contém exatamente 43 colunas', () => {
-    expect(EXPORT_COLUMNS.length).toBe(43);
+  it('contém exatamente 44 colunas', () => {
+    expect(EXPORT_COLUMNS.length).toBe(44);
   });
 
   it('ordem é exatamente a especificada', () => {
@@ -116,7 +117,7 @@ describe('ExportRow — suporte a null para dados incompletos', () => {
       // Sessão (obrigatórios)
       sessionId:          'sess-001',
       sessionName:        'Turma A',
-      sequenceVariant:    'ABAC',
+      blockSequence:      'A1-B2-A3-C4',
       sessionStatus:      'IN_PROGRESS',
       p1ParticipantCode:  'G1P1',
       p2ParticipantCode:  'G1P2',
@@ -125,6 +126,7 @@ describe('ExportRow — suporte a null para dados incompletos', () => {
       blockNumber:             1,
       trialInBlock:            1,
       condition:               'A',
+      blockLabel:              'A1',
       endowment:               32,
       distributorCharacter:    'Lucas',
       receptorCharacter:       'Isaac',
@@ -186,7 +188,7 @@ describe('ExportRow — linha completa', () => {
     const completeRow: ExportRow = {
       sessionId:          'sess-001',
       sessionName:        'Turma A — Dupla 3',
-      sequenceVariant:    'ABAC',
+      blockSequence:      'A1-B2-A3-C4',
       sessionStatus:      'COMPLETED',
       p1ParticipantCode:  'G1P1',
       p2ParticipantCode:  'G1P2',
@@ -194,6 +196,7 @@ describe('ExportRow — linha completa', () => {
       blockNumber:             1,
       trialInBlock:            5,
       condition:               'A',
+      blockLabel:              'A1',
       endowment:               32,
       distributorCharacter:    'Lucas',
       receptorCharacter:       'Isaac',
@@ -229,7 +232,7 @@ describe('ExportRow — linha completa', () => {
       attemptCompletedAt: now,
     };
 
-    // Confirma que todos os 43 campos estão presentes
+    // Confirma que todos os 44 campos estão presentes
     const presentKeys = Object.keys(completeRow);
     expect(presentKeys.length).toBe(EXPORT_COLUMNS.length);
 
