@@ -13,7 +13,7 @@
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
-import { type SequenceVariant } from '../domain/experiment.types';
+import { formatBlockSequence, type BlockConditions, type Condition } from '../domain/experiment.types';
 import { buildAttemptDrafts, SessionBootstrapError } from './session.drafts';
 import { deriveStage } from './participant.stage';
 
@@ -38,17 +38,29 @@ async function loadOwnedSession(
 }
 
 // ---------------------------------------------------------------------------
+// Helper: acrescenta o rótulo legível da ordem dos blocos (ex.: 'A1-B2-A3-C4')
+// ---------------------------------------------------------------------------
+
+function withBlockSequence<T extends { blockConditions: Condition[] }>(
+  session: T,
+): T & { blockSequence: string } {
+  return { ...session, blockSequence: formatBlockSequence(session.blockConditions) };
+}
+
+// ---------------------------------------------------------------------------
 // createSession
+// `blockConditions` já validado pela camada HTTP (isBlockConditions).
 // ---------------------------------------------------------------------------
 
 export async function createSession(
   researcherId: string,
   name: string,
-  sequenceVariant: SequenceVariant,
+  blockConditions: BlockConditions,
 ) {
-  return prisma.session.create({
-    data: { researcherId, name, sequenceVariant },
+  const session = await prisma.session.create({
+    data: { researcherId, name, blockConditions },
   });
+  return withBlockSequence(session);
 }
 
 // ---------------------------------------------------------------------------
@@ -94,14 +106,13 @@ export async function startSession(sessionId: string, researcherId: string) {
       );
     }
 
-    // 3. Carregar 64 TrialTemplates da variante com Stimulus incluído
+    // 3. Carregar os 64 TrialTemplates (um por posição) com Stimulus incluído
     const templates = await tx.trialTemplate.findMany({
-      where: { sequenceVariant: session.sequenceVariant },
       include: { stimulus: true },
     });
 
-    // 4 + 5. Gerar drafts e criar Attempts
-    const drafts = buildAttemptDrafts(sessionId, session.sequenceVariant, templates);
+    // 4 + 5. Gerar drafts (condição de cada bloco vem da sessão) e criar Attempts
+    const drafts = buildAttemptDrafts(sessionId, session.blockConditions, templates);
     await tx.attempt.createMany({ data: drafts });
 
     // 6. Atualizar Session para IN_PROGRESS
@@ -120,7 +131,7 @@ export async function getSession(sessionId: string, researcherId: string) {
   // Valida ownership (sem revelar existência a outros pesquisadores)
   await loadOwnedSession(prisma, sessionId, researcherId);
 
-  return prisma.session.findUnique({
+  const session = await prisma.session.findUnique({
     where: { id: sessionId },
     include: {
       participants: {
@@ -138,6 +149,7 @@ export async function getSession(sessionId: string, researcherId: string) {
       _count: { select: { attempts: true } },
     },
   });
+  return session ? withBlockSequence(session) : session;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,13 +157,13 @@ export async function getSession(sessionId: string, researcherId: string) {
 // ---------------------------------------------------------------------------
 
 export async function listSessions(researcherId: string) {
-  return prisma.session.findMany({
+  const sessions = await prisma.session.findMany({
     where: { researcherId },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
       name: true,
-      sequenceVariant: true,
+      blockConditions: true,
       status: true,
       startedAt: true,
       completedAt: true,
@@ -160,6 +172,7 @@ export async function listSessions(researcherId: string) {
       _count: { select: { attempts: true } },
     },
   });
+  return sessions.map(withBlockSequence);
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +214,7 @@ export async function getSessionPanel(sessionId: string, researcherId: string) {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     select: {
-      id: true, name: true, sequenceVariant: true,
+      id: true, name: true, blockConditions: true,
       status: true, startedAt: true, completedAt: true,
       participants: {
         select: {
@@ -332,7 +345,9 @@ export async function getSessionPanel(sessionId: string, researcherId: string) {
   return {
     session: {
       id: session.id, name: session.name,
-      sequenceVariant: session.sequenceVariant, status: session.status,
+      blockConditions: session.blockConditions,
+      blockSequence: formatBlockSequence(session.blockConditions),
+      status: session.status,
       startedAt: session.startedAt, completedAt: session.completedAt,
     },
     participants: participantsWithStage,

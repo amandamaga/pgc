@@ -34,7 +34,7 @@ const RES_A = 'res-A';
 const RES_B = 'res-B';
 const SESS_ID = 'sess-001';
 
-const sessionOfA = { id: SESS_ID, researcherId: RES_A, status: 'WAITING', sequenceVariant: 'ABAC', name: 'T' };
+const sessionOfA = { id: SESS_ID, researcherId: RES_A, status: 'WAITING', blockConditions: ['A', 'B', 'A', 'C'], name: 'T' };
 
 beforeEach(() => { vi.resetAllMocks(); });
 
@@ -45,10 +45,22 @@ beforeEach(() => { vi.resetAllMocks(); });
 describe('createSession', () => {
   it('cria sessão com researcherId passado pelo service (do JWT)', async () => {
     vi.mocked(prisma.session.create).mockResolvedValue(sessionOfA as never);
-    await createSession(RES_A, 'Turma A', 'ABAC');
+    await createSession(RES_A, 'Turma A', ['A', 'B', 'A', 'C']);
     expect(prisma.session.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ researcherId: RES_A }),
     });
+  });
+
+  it('grava blockConditions (com repetição) e devolve o rótulo blockSequence', async () => {
+    vi.mocked(prisma.session.create).mockResolvedValue(
+      { ...sessionOfA, blockConditions: ['A', 'A', 'B', 'B'] } as never,
+    );
+    const result = await createSession(RES_A, 'Turma A', ['A', 'A', 'B', 'B']);
+    expect(prisma.session.create).toHaveBeenCalledWith({
+      data: { researcherId: RES_A, name: 'Turma A', blockConditions: ['A', 'A', 'B', 'B'] },
+    });
+    expect(result.blockSequence).toBe('A1-A2-B3-B4');
+    expect(result).not.toHaveProperty('sequenceVariant');
   });
 });
 
@@ -109,6 +121,44 @@ describe('startSession — ownership', () => {
 });
 
 // ---------------------------------------------------------------------------
+// startSession — F8: condição de cada bloco vem de session.blockConditions
+// ---------------------------------------------------------------------------
+
+describe('startSession — condições dos blocos (F8)', () => {
+  it('busca os 64 templates sem filtro de variante e grava a condição de cada bloco', async () => {
+    const { RAW_STIMULI } = await import('../../src/prisma/seed-data');
+    const templates = RAW_STIMULI.map(([blockNumber, trialInBlock, dist, endowment, dDist, rDist], i) => ({
+      id: `tmpl-${i}`, blockNumber, trialInBlock,
+      stimulus: {
+        endowment, distributorDistribution: dDist, receptorDistribution: rDist,
+        distributorCharacter: dist, receptorCharacter: `r-${dist}`,
+      },
+    }));
+    const tx = {
+      session: {
+        findUnique: vi.fn().mockResolvedValue({ ...sessionOfA, blockConditions: ['C', 'C', 'A', 'B'] }),
+        update: vi.fn().mockResolvedValue({ ...sessionOfA, status: 'IN_PROGRESS' }),
+      },
+      sessionParticipant: { findMany: vi.fn().mockResolvedValue([{ slot: 'P1' }, { slot: 'P2' }]) },
+      trialTemplate: { findMany: vi.fn().mockResolvedValue(templates) },
+      attempt: { createMany: vi.fn() },
+    };
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (async (cb: (t: unknown) => Promise<unknown>) => cb(tx)) as never,
+    );
+
+    await startSession(SESS_ID, RES_A);
+
+    expect(tx.trialTemplate.findMany).toHaveBeenCalledWith({ include: { stimulus: true } });
+    const { data } = tx.attempt.createMany.mock.calls[0][0] as { data: Array<{ blockNumber: number; condition: string }> };
+    expect(data).toHaveLength(64);
+    const byBlock = [1, 2, 3, 4].map(b => [...new Set(data.filter(d => d.blockNumber === b).map(d => d.condition))]);
+    expect(byBlock).toEqual([['C'], ['C'], ['A'], ['B']]);
+    expect(data.every(d => !('sessionSequenceVariant' in d))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getSession — ownership
 // ---------------------------------------------------------------------------
 
@@ -132,6 +182,8 @@ describe('getSession — ownership', () => {
       .mockResolvedValueOnce(fullSession as never);  // findUnique com include
     const result = await getSession(SESS_ID, RES_A);
     expect(result).not.toBeNull();
+    expect(result!.blockConditions).toEqual(['A', 'B', 'A', 'C']);
+    expect(result!.blockSequence).toBe('A1-B2-A3-C4');
   });
 });
 
@@ -160,6 +212,18 @@ describe('listSessions', () => {
     expect(prisma.session.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { researcherId: RES_B } })
     );
+  });
+
+  it('cada sessão vem com blockConditions e o rótulo blockSequence', async () => {
+    vi.mocked(prisma.session.findMany).mockResolvedValue([
+      sessionOfA,
+      { ...sessionOfA, id: 'sess-002', blockConditions: ['B', 'B', 'B', 'B'] },
+    ] as never);
+    const result = await listSessions(RES_A);
+    expect(result.map(s => s.blockSequence)).toEqual(['A1-B2-A3-C4', 'B1-B2-B3-B4']);
+    const select = vi.mocked(prisma.session.findMany).mock.calls[0][0]!.select as Record<string, unknown>;
+    expect(select['blockConditions']).toBe(true);
+    expect(select['sequenceVariant']).toBeUndefined();
   });
 
   it('retorna lista vazia quando pesquisadora não tem sessões', async () => {
@@ -393,6 +457,8 @@ describe('getSessionPanel — progresso (existente)', () => {
 
   it('progress contém totalAttempts=3, finalizedAttempts=2, acknowledgedAttempts=1', async () => {
     const result = await getSessionPanel(SESS_ID, RES_A);
+    expect(result.session.blockConditions).toEqual(['A', 'B', 'A', 'C']);
+    expect(result.session.blockSequence).toBe('A1-B2-A3-C4');
     expect(result.progress.totalAttempts).toBe(3);
     expect(result.progress.finalizedAttempts).toBe(2);
     expect(result.progress.acknowledgedAttempts).toBe(1);

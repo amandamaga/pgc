@@ -57,7 +57,8 @@ const RES_ID   = 'res-001';
 const BEARER   = 'Bearer valid.jwt.token';
 
 const mockSession = {
-  id: 'sess-001', researcherId: RES_ID, name: 'Turma A', sequenceVariant: 'ABAC',
+  id: 'sess-001', researcherId: RES_ID, name: 'Turma A',
+  blockConditions: ['A', 'B', 'A', 'C'], blockSequence: 'A1-B2-A3-C4',
   status: 'WAITING', createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(), startedAt: null, completedAt: null,
 };
@@ -92,7 +93,7 @@ describe('401 sem token de autenticação', () => {
     vi.mocked(authService.verifyToken).mockImplementation(() => {
       throw new SessionBootstrapError('Token JWT inválido ou expirado.');
     });
-    const res = await request(app).post('/sessions').send({ name: 'X', sequenceVariant: 'ABAC' });
+    const res = await request(app).post('/sessions').send({ name: 'X', blockConditions: ['A', 'B', 'A', 'C'] });
     expect(res.status).toBe(401);
   });
 
@@ -154,34 +155,78 @@ describe('POST /sessions', () => {
   it('201 com body válido — researcherId vem do JWT', async () => {
     vi.mocked(sessionService.createSession).mockResolvedValue(mockSession as never);
     const res = await request(app).post('/sessions').set('Authorization', BEARER)
-      .send({ name: 'Turma A', sequenceVariant: 'ABAC' });
+      .send({ name: 'Turma A', blockConditions: ['A', 'B', 'A', 'C'] });
     expect(res.status).toBe(201);
     expect(res.body.id).toBe('sess-001');
+    expect(res.body.blockSequence).toBe('A1-B2-A3-C4');
     // researcherId extraído do JWT, não do body
-    expect(sessionService.createSession).toHaveBeenCalledWith(RES_ID, 'Turma A', 'ABAC');
+    expect(sessionService.createSession).toHaveBeenCalledWith(RES_ID, 'Turma A', ['A', 'B', 'A', 'C']);
   });
 
   it('researcherId enviado no body é ignorado — usa o do JWT', async () => {
     vi.mocked(sessionService.createSession).mockResolvedValue(mockSession as never);
     await request(app).post('/sessions').set('Authorization', BEARER)
-      .send({ researcherId: 'res-MALICIOSO', name: 'X', sequenceVariant: 'ABAC' });
+      .send({ researcherId: 'res-MALICIOSO', name: 'X', blockConditions: ['A', 'B', 'A', 'C'] });
     // Nunca deve usar res-MALICIOSO
-    expect(sessionService.createSession).toHaveBeenCalledWith(RES_ID, 'X', 'ABAC');
+    expect(sessionService.createSession).toHaveBeenCalledWith(RES_ID, 'X', ['A', 'B', 'A', 'C']);
     expect(sessionService.createSession).not.toHaveBeenCalledWith('res-MALICIOSO', expect.anything(), expect.anything());
   });
 
   it('400 sem name', async () => {
     const res = await request(app).post('/sessions').set('Authorization', BEARER)
-      .send({ sequenceVariant: 'ABAC' });
+      .send({ blockConditions: ['A', 'B', 'A', 'C'] });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/name/);
   });
 
-  it('400 com sequenceVariant inválida', async () => {
+  it('400 com sequenceVariant (legado) inválida', async () => {
     const res = await request(app).post('/sessions').set('Authorization', BEARER)
       .send({ name: 'X', sequenceVariant: 'INVALID' });
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/sequenceVariant/);
+    expect(res.body.error).toMatch(/blockConditions/);
+    expect(sessionService.createSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [['A', 'B', 'A']],
+    [['A', 'B', 'A', 'C', 'B']],
+    [['A', 'B', 'A', 'D']],
+    [['a', 'b', 'a', 'c']],
+    [['A', 'B', null, 'C']],
+    ['ABAC'],
+    [[]],
+  ])('400 com blockConditions inválido %j', async (blockConditions) => {
+    const res = await request(app).post('/sessions').set('Authorization', BEARER)
+      .send({ name: 'X', blockConditions });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/blockConditions/);
+    expect(sessionService.createSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [['A', 'A', 'B', 'B']],
+    [['C', 'C', 'C', 'C']],
+    [['B', 'A', 'C', 'A']],
+    [['A', 'B', 'A', 'C']],
+  ])('201 para qualquer combinação, com repetição: %j', async (blockConditions) => {
+    vi.mocked(sessionService.createSession).mockResolvedValue(mockSession as never);
+    const res = await request(app).post('/sessions').set('Authorization', BEARER)
+      .send({ name: 'X', blockConditions });
+    expect(res.status).toBe(201);
+    expect(sessionService.createSession).toHaveBeenCalledWith(RES_ID, 'X', blockConditions);
+  });
+
+  it('blockConditions tem prioridade sobre sequenceVariant quando os dois vêm', async () => {
+    vi.mocked(sessionService.createSession).mockResolvedValue(mockSession as never);
+    await request(app).post('/sessions').set('Authorization', BEARER)
+      .send({ name: 'X', sequenceVariant: 'ABAC', blockConditions: ['C', 'C', 'B', 'B'] });
+    expect(sessionService.createSession).toHaveBeenCalledWith(RES_ID, 'X', ['C', 'C', 'B', 'B']);
+  });
+
+  it('não aceita propriedades herdadas como atalho (ex.: toString)', async () => {
+    const res = await request(app).post('/sessions').set('Authorization', BEARER)
+      .send({ name: 'X', sequenceVariant: 'toString' });
+    expect(res.status).toBe(400);
   });
 
   it('400 sem body', async () => {
@@ -189,11 +234,17 @@ describe('POST /sessions', () => {
     expect(res.status).toBe(400);
   });
 
-  it.each(['ABAC', 'ACAB', 'BCBC', 'CBCB'])('201 para variante válida %s', async (variant) => {
-    vi.mocked(sessionService.createSession).mockResolvedValue({ ...mockSession, sequenceVariant: variant } as never);
+  it.each([
+    ['ABAC', ['A', 'B', 'A', 'C']],
+    ['ACAB', ['A', 'C', 'A', 'B']],
+    ['BCBC', ['B', 'C', 'B', 'C']],
+    ['CBCB', ['C', 'B', 'C', 'B']],
+  ])('transição: sequenceVariant %s (frontend anterior) vira %j', async (variant, expected) => {
+    vi.mocked(sessionService.createSession).mockResolvedValue(mockSession as never);
     const res = await request(app).post('/sessions').set('Authorization', BEARER)
       .send({ name: 'X', sequenceVariant: variant });
     expect(res.status).toBe(201);
+    expect(sessionService.createSession).toHaveBeenCalledWith(RES_ID, 'X', expected);
   });
 
   it('400 para JSON malformado', async () => {
@@ -208,14 +259,14 @@ describe('POST /sessions', () => {
       Object.assign(new Error('unique'), { code: 'P2002' })
     );
     const res = await request(app).post('/sessions').set('Authorization', BEARER)
-      .send({ name: 'X', sequenceVariant: 'ABAC' });
+      .send({ name: 'X', blockConditions: ['A', 'B', 'A', 'C'] });
     expect(res.status).toBe(409);
   });
 
   it('500 para erro inesperado', async () => {
     vi.mocked(sessionService.createSession).mockRejectedValue(new Error('DB'));
     const res = await request(app).post('/sessions').set('Authorization', BEARER)
-      .send({ name: 'X', sequenceVariant: 'ABAC' });
+      .send({ name: 'X', blockConditions: ['A', 'B', 'A', 'C'] });
     expect(res.status).toBe(500);
   });
 });
@@ -428,7 +479,8 @@ describe('GET /sessions/:sessionId', () => {
 describe('GET /sessions/:sessionId/panel', () => {
   const mockPanel = {
     session: {
-      id: 'sess-001', name: 'Turma A', sequenceVariant: 'ABAC',
+      id: 'sess-001', name: 'Turma A',
+      blockConditions: ['A', 'B', 'A', 'C'], blockSequence: 'A1-B2-A3-C4',
       status: 'IN_PROGRESS', startedAt: new Date().toISOString(), completedAt: null,
     },
     participants: [
@@ -573,14 +625,14 @@ describe('GET /sessions/:sessionId/participant-access', () => {
 
 describe('GET /sessions/:sessionId/export.csv', () => {
   const MOCK_CSV =
-    'sessionId,sessionName,sequenceVariant,sessionStatus,p1ParticipantCode,p2ParticipantCode,' +
-    'globalNumber,blockNumber,trialInBlock,condition,endowment,distributorCharacter,receptorCharacter,' +
+    'sessionId,sessionName,blockSequence,sessionStatus,p1ParticipantCode,p2ParticipantCode,' +
+    'globalNumber,blockNumber,trialInBlock,condition,blockLabel,endowment,distributorCharacter,receptorCharacter,' +
     'distributorDistribution,receptorDistribution,p1Judgment,p1JudgmentAt,p1Punishment,p1PunishmentAt,' +
     'p1ResultAcknowledgedAt,p2Judgment,p2JudgmentAt,p2Punishment,p2PunishmentAt,p2ResultAcknowledgedAt,' +
     'consensus,culturant,p1IndividualCost,p2IndividualCost,punishmentApplied,distributorFinal,' +
     'distributorLost,culturalConsequence,p1CoinsAfter,p2CoinsAfter,groupCoinsAfter,disagreementCountAfter,' +
     'attemptStartedAt,attemptCompletedAt\n' +
-    'sess-001,Turma A,ABAC,COMPLETED,G1P1,G1P2,1,1,1,A,32,Lucas,Isaac,24,8,Unjust,' +
+    'sess-001,Turma A,A1-B2-A3-C4,COMPLETED,G1P1,G1P2,1,1,1,A,A1,32,Lucas,Isaac,24,8,Unjust,' +
     '2024-10-24T10:00:00.000Z,Punish,2024-10-24T10:00:00.000Z,2024-10-24T10:00:00.000Z,' +
     'Unjust,2024-10-24T10:00:00.000Z,Punish,2024-10-24T10:00:00.000Z,2024-10-24T10:00:00.000Z,' +
     'true,Cp,1,1,true,8,16,3,79,79,3,0,2024-10-24T10:00:00.000Z,2024-10-24T10:00:00.000Z';
@@ -637,7 +689,7 @@ describe('GET /sessions/:sessionId/export.csv', () => {
     const res = await request(app)
       .get('/sessions/sess-001/export.csv')
       .set('Authorization', BEARER);
-    expect(res.text).toContain('sessionId,sessionName,sequenceVariant');
+    expect(res.text).toContain('sessionId,sessionName,blockSequence');
     expect(res.text).toContain('sess-001');
   });
 

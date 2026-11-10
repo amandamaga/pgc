@@ -4,7 +4,7 @@ import {
   SessionBootstrapError,
   type TrialTemplateWithStimulus,
 } from '../../src/services/session.drafts';
-import { SEQUENCE_MAP } from '../../src/domain/experiment.types';
+import { SEQUENCE_PRESETS, type BlockConditions } from '../../src/domain/experiment.types';
 import { RAW_STIMULI } from '../../src/prisma/seed-data';
 
 // ---------------------------------------------------------------------------
@@ -12,10 +12,10 @@ import { RAW_STIMULI } from '../../src/prisma/seed-data';
 // Usa os dados reais de posição e estímulo — sem banco.
 // ---------------------------------------------------------------------------
 
-function makeTemplates(variant: 'ABAC' | 'ACAB' | 'BCBC' | 'CBCB'): TrialTemplateWithStimulus[] {
+// Um template por posição (64) — o estímulo não depende da condição do bloco
+function makeTemplates(): TrialTemplateWithStimulus[] {
   return RAW_STIMULI.map(([blockNumber, trialInBlock, dist, endowment, dDist, rDist], i) => ({
-    id: `tmpl-${variant}-${i}`,
-    sequenceVariant: variant,
+    id: `tmpl-${i}`,
     blockNumber,
     trialInBlock,
     stimulus: {
@@ -29,6 +29,7 @@ function makeTemplates(variant: 'ABAC' | 'ACAB' | 'BCBC' | 'CBCB'): TrialTemplat
 }
 
 const SESSION_ID = 'session-test-001';
+const ABAC: BlockConditions = SEQUENCE_PRESETS.ABAC;
 
 // ---------------------------------------------------------------------------
 // Contagem e estrutura
@@ -36,19 +37,24 @@ const SESSION_ID = 'session-test-001';
 
 describe('buildAttemptDrafts — contagem e estrutura', () => {
   it('gera exatamente 64 drafts para ABAC', () => {
-    const drafts = buildAttemptDrafts(SESSION_ID, 'ABAC', makeTemplates('ABAC'));
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
     expect(drafts.length).toBe(64);
   });
 
-  it('gera exatamente 64 drafts para cada variante', () => {
-    for (const variant of ['ABAC', 'ACAB', 'BCBC', 'CBCB'] as const) {
-      const drafts = buildAttemptDrafts(SESSION_ID, variant, makeTemplates(variant));
-      expect(drafts.length, `variante ${variant}`).toBe(64);
+  it('gera exatamente 64 drafts para cada atalho e para sequências repetidas', () => {
+    const sequences: BlockConditions[] = [
+      ...Object.values(SEQUENCE_PRESETS),
+      ['A', 'A', 'B', 'B'],
+      ['C', 'C', 'C', 'C'],
+    ];
+    for (const seq of sequences) {
+      const drafts = buildAttemptDrafts(SESSION_ID, seq, makeTemplates());
+      expect(drafts.length, `sequência ${seq.join('')}`).toBe(64);
     }
   });
 
   it('gera 16 drafts por bloco', () => {
-    const drafts = buildAttemptDrafts(SESSION_ID, 'ABAC', makeTemplates('ABAC'));
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
     for (let b = 1; b <= 4; b++) {
       const count = drafts.filter(d => d.blockNumber === b).length;
       expect(count, `bloco ${b}`).toBe(16);
@@ -56,15 +62,13 @@ describe('buildAttemptDrafts — contagem e estrutura', () => {
   });
 
   it('todos os sessionId são iguais ao passado como argumento', () => {
-    const drafts = buildAttemptDrafts(SESSION_ID, 'ABAC', makeTemplates('ABAC'));
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
     expect(drafts.every(d => d.sessionId === SESSION_ID)).toBe(true);
   });
 
-  it('todos os sessionSequenceVariant batem com a variante passada', () => {
-    for (const variant of ['ABAC', 'ACAB', 'BCBC', 'CBCB'] as const) {
-      const drafts = buildAttemptDrafts(SESSION_ID, variant, makeTemplates(variant));
-      expect(drafts.every(d => d.sessionSequenceVariant === variant)).toBe(true);
-    }
+  it('drafts não carregam variante de sequência (campo pivô removido na F8)', () => {
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
+    expect(drafts.every(d => !('sessionSequenceVariant' in d))).toBe(true);
   });
 });
 
@@ -74,34 +78,34 @@ describe('buildAttemptDrafts — contagem e estrutura', () => {
 
 describe('buildAttemptDrafts — globalNumber', () => {
   it('globalNumbers vão de 1 a 64 sem lacunas', () => {
-    const drafts = buildAttemptDrafts(SESSION_ID, 'ABAC', makeTemplates('ABAC'));
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
     const gns = drafts.map(d => d.globalNumber).sort((a, b) => a - b);
     expect(gns).toEqual(Array.from({ length: 64 }, (_, i) => i + 1));
   });
 
   it('globalNumber 16 = bloco 1 trial 16', () => {
-    const drafts = buildAttemptDrafts(SESSION_ID, 'ABAC', makeTemplates('ABAC'));
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
     const d = drafts.find(d => d.globalNumber === 16)!;
     expect(d.blockNumber).toBe(1);
     expect(d.trialInBlock).toBe(16);
   });
 
   it('globalNumber 17 = bloco 2 trial 1', () => {
-    const drafts = buildAttemptDrafts(SESSION_ID, 'ABAC', makeTemplates('ABAC'));
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
     const d = drafts.find(d => d.globalNumber === 17)!;
     expect(d.blockNumber).toBe(2);
     expect(d.trialInBlock).toBe(1);
   });
 
   it('globalNumber 64 = bloco 4 trial 16', () => {
-    const drafts = buildAttemptDrafts(SESSION_ID, 'ABAC', makeTemplates('ABAC'));
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
     const d = drafts.find(d => d.globalNumber === 64)!;
     expect(d.blockNumber).toBe(4);
     expect(d.trialInBlock).toBe(16);
   });
 
   it('formula globalNumber = (blockNumber-1)*16 + trialInBlock', () => {
-    const drafts = buildAttemptDrafts(SESSION_ID, 'ABAC', makeTemplates('ABAC'));
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
     for (const d of drafts) {
       expect(d.globalNumber).toBe((d.blockNumber - 1) * 16 + d.trialInBlock);
     }
@@ -109,38 +113,33 @@ describe('buildAttemptDrafts — globalNumber', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Condições — derivadas de SEQUENCE_MAP, nunca duplicadas
+// Condições — derivadas de blockConditions (escolha da pesquisadora)
 // ---------------------------------------------------------------------------
 
-describe('buildAttemptDrafts — condições por variante', () => {
+describe('buildAttemptDrafts — condição de cada bloco', () => {
   it.each([
     ['ABAC', ['A', 'B', 'A', 'C']],
     ['ACAB', ['A', 'C', 'A', 'B']],
     ['BCBC', ['B', 'C', 'B', 'C']],
     ['CBCB', ['C', 'B', 'C', 'B']],
-  ] as const)('variante %s tem condições corretas por bloco', (variant, expectedConditions) => {
-    const drafts = buildAttemptDrafts(SESSION_ID, variant, makeTemplates(variant));
+    ['AABB', ['A', 'A', 'B', 'B']],
+    ['CCCC', ['C', 'C', 'C', 'C']],
+    ['BACA', ['B', 'A', 'C', 'A']],
+  ] as const)('sequência %s tem a condição certa em cada bloco', (_name, seq) => {
+    const drafts = buildAttemptDrafts(SESSION_ID, [...seq] as BlockConditions, makeTemplates());
     for (let b = 1; b <= 4; b++) {
-      const blockDrafts = drafts.filter(d => d.blockNumber === b);
-      const expectedCondition = expectedConditions[b - 1];
-      expect(
-        blockDrafts.every(d => d.condition === expectedCondition),
-        `variante ${variant} bloco ${b} deve ser ${expectedCondition}`
-      ).toBe(true);
+      const blockConditions = new Set(drafts.filter(d => d.blockNumber === b).map(d => d.condition));
+      expect(blockConditions.size, `bloco ${b}`).toBe(1);
+      expect(blockConditions.has(seq[b - 1]), `bloco ${b} deve ser ${seq[b - 1]}`).toBe(true);
     }
   });
 
-  it('condições correspondem exatamente a SEQUENCE_MAP', () => {
-    for (const variant of ['ABAC', 'ACAB', 'BCBC', 'CBCB'] as const) {
-      const expectedConditions = SEQUENCE_MAP[variant];
-      const drafts = buildAttemptDrafts(SESSION_ID, variant, makeTemplates(variant));
-      for (let b = 1; b <= 4; b++) {
-        const blockConditions = new Set(
-          drafts.filter(d => d.blockNumber === b).map(d => d.condition)
-        );
-        expect(blockConditions.size).toBe(1);
-        expect(blockConditions.has(expectedConditions[b - 1])).toBe(true);
-      }
+  it('o estímulo de cada posição é o mesmo em qualquer sequência', () => {
+    const abac = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
+    const cccc = buildAttemptDrafts(SESSION_ID, ['C', 'C', 'C', 'C'], makeTemplates());
+    for (let i = 0; i < 64; i++) {
+      expect(cccc[i].trialTemplateId).toBe(abac[i].trialTemplateId);
+      expect(cccc[i].distributorCharacter).toBe(abac[i].distributorCharacter);
     }
   });
 });
@@ -151,8 +150,8 @@ describe('buildAttemptDrafts — condições por variante', () => {
 
 describe('buildAttemptDrafts — snapshot do estímulo', () => {
   it('snapshot de cada draft bate com o TrialTemplate correspondente', () => {
-    const templates = makeTemplates('ABAC');
-    const drafts = buildAttemptDrafts(SESSION_ID, 'ABAC', templates);
+    const templates = makeTemplates();
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, templates);
     for (const draft of drafts) {
       const tmpl = templates.find(t => t.id === draft.trialTemplateId)!;
       expect(draft.endowment).toBe(tmpl.stimulus.endowment);
@@ -164,7 +163,7 @@ describe('buildAttemptDrafts — snapshot do estímulo', () => {
   });
 
   it('todos os (blockNumber, trialInBlock) são únicos', () => {
-    const drafts = buildAttemptDrafts(SESSION_ID, 'ABAC', makeTemplates('ABAC'));
+    const drafts = buildAttemptDrafts(SESSION_ID, ABAC, makeTemplates());
     const positions = drafts.map(d => `${d.blockNumber}|${d.trialInBlock}`);
     expect(new Set(positions).size).toBe(64);
   });
@@ -176,63 +175,63 @@ describe('buildAttemptDrafts — snapshot do estímulo', () => {
 
 describe('buildAttemptDrafts — validação de invariantes', () => {
   it('lança SessionBootstrapError se templates.length !== 64', () => {
-    const templates = makeTemplates('ABAC').slice(0, 63);
-    expect(() => buildAttemptDrafts(SESSION_ID, 'ABAC', templates))
+    const templates = makeTemplates().slice(0, 63);
+    expect(() => buildAttemptDrafts(SESSION_ID, ABAC, templates))
       .toThrowError(SessionBootstrapError);
   });
 
   it('lança SessionBootstrapError se algum bloco tiver menos de 16 templates', () => {
-    const templates = makeTemplates('ABAC');
+    const templates = makeTemplates();
     // Remove uma entrada do bloco 2 e adiciona duplicata no bloco 1 para manter 64
     const bloco2Idx = templates.findIndex(t => t.blockNumber === 2);
     templates.splice(bloco2Idx, 1);
     const bloco1Template = { ...templates[0], id: 'extra' };
     templates.push(bloco1Template);
-    expect(() => buildAttemptDrafts(SESSION_ID, 'ABAC', templates))
+    expect(() => buildAttemptDrafts(SESSION_ID, ABAC, templates))
       .toThrowError(SessionBootstrapError);
   });
 
   it('lança SessionBootstrapError quando bloco tem trial duplicado + trial ausente (64 templates no total)', () => {
-    const templates = makeTemplates('ABAC');
+    const templates = makeTemplates();
     // No bloco 1: remove trial 8, duplica trial 7 — total ainda é 64
     const removeIdx = templates.findIndex(t => t.blockNumber === 1 && t.trialInBlock === 8);
     templates.splice(removeIdx, 1);
     const dupSource = templates.find(t => t.blockNumber === 1 && t.trialInBlock === 7)!;
     templates.push({ ...dupSource, id: 'dup-trial7' });
     expect(templates.length).toBe(64); // confirma que o total não mudou
-    expect(() => buildAttemptDrafts(SESSION_ID, 'ABAC', templates))
+    expect(() => buildAttemptDrafts(SESSION_ID, ABAC, templates))
       .toThrowError(SessionBootstrapError);
   });
 
   it('lança SessionBootstrapError quando trialInBlock está fora de 1..16 (ex: 0)', () => {
-    const templates = makeTemplates('ABAC');
+    const templates = makeTemplates();
     // No bloco 3: remove trial 16, adiciona trial 0 — total é 64 mas 0 é inválido
     const removeIdx = templates.findIndex(t => t.blockNumber === 3 && t.trialInBlock === 16);
     templates.splice(removeIdx, 1);
     const source = templates.find(t => t.blockNumber === 3 && t.trialInBlock === 1)!;
     templates.push({ ...source, id: 'invalid-trial', trialInBlock: 0 });
     expect(templates.length).toBe(64);
-    expect(() => buildAttemptDrafts(SESSION_ID, 'ABAC', templates))
+    expect(() => buildAttemptDrafts(SESSION_ID, ABAC, templates))
       .toThrowError(SessionBootstrapError);
   });
 
   it('lança SessionBootstrapError quando trialInBlock está fora de 1..16 (ex: 17)', () => {
-    const templates = makeTemplates('ABAC');
+    const templates = makeTemplates();
     const removeIdx = templates.findIndex(t => t.blockNumber === 2 && t.trialInBlock === 16);
     templates.splice(removeIdx, 1);
     const source = templates.find(t => t.blockNumber === 2 && t.trialInBlock === 1)!;
     templates.push({ ...source, id: 'invalid-trial-17', trialInBlock: 17 });
     expect(templates.length).toBe(64);
-    expect(() => buildAttemptDrafts(SESSION_ID, 'ABAC', templates))
+    expect(() => buildAttemptDrafts(SESSION_ID, ABAC, templates))
       .toThrowError(SessionBootstrapError);
   });
 
-  it('lança SessionBootstrapError quando template tem sequenceVariant diferente da sessão', () => {
-    const templates = makeTemplates('ABAC');
-    // Substitui a sequenceVariant de um template por outra variante
-    const idx = templates.findIndex(t => t.blockNumber === 4 && t.trialInBlock === 1);
-    templates[idx] = { ...templates[idx], sequenceVariant: 'ACAB', id: 'wrong-variant' };
-    expect(() => buildAttemptDrafts(SESSION_ID, 'ABAC', templates))
+  it.each([
+    [['A', 'B', 'A']],
+    [['A', 'B', 'A', 'C', 'A']],
+    [['A', 'B', 'A', 'D']],
+  ])('lança SessionBootstrapError com blockConditions inválido %j', (seq) => {
+    expect(() => buildAttemptDrafts(SESSION_ID, seq as BlockConditions, makeTemplates()))
       .toThrowError(SessionBootstrapError);
   });
 });

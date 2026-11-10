@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveTrial } from '../../src/domain/experiment.rules';
 import {
-  SEQUENCE_MAP,
+  SEQUENCE_PRESETS,
   type ParticipantResponses,
   type SessionState,
   type Stimulus,
@@ -50,8 +50,8 @@ const BLOCK_RESPONSES: ParticipantResponses[] = [
   ...RESPONSE_PATTERN,
 ];
 
-// Sequência ABAC via SEQUENCE_MAP
-const SEQUENCE = SEQUENCE_MAP['ABAC']; // ['A', 'B', 'A', 'C']
+// Sequência ABAC via SEQUENCE_PRESETS
+const SEQUENCE = SEQUENCE_PRESETS['ABAC']; // ['A', 'B', 'A', 'C']
 
 // Estado inicial canônico
 const INITIAL_STATE: SessionState = {
@@ -136,8 +136,8 @@ describe('simulação sintética de sessão ABAC (64 tentativas)', () => {
     expect(unequalCount).toBe(8);
   });
 
-  // 4. Condições dos blocos seguem ABAC via SEQUENCE_MAP
-  it('condições dos 4 blocos são A, B, A, C (via SEQUENCE_MAP)', () => {
+  // 4. Condições dos blocos seguem ABAC via SEQUENCE_PRESETS
+  it('condições dos 4 blocos são A, B, A, C (via SEQUENCE_PRESETS)', () => {
     expect(SEQUENCE).toEqual(['A', 'B', 'A', 'C']);
 
     const conditionsByBlock = [0, 1, 2, 3].map((b) =>

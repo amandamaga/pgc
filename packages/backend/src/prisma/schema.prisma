@@ -14,15 +14,8 @@ datasource db {
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
-/// Variante da sequência de condições. Cobre Experimentos 1 e 2.
-enum SequenceVariant {
-  ABAC
-  ACAB
-  BCBC
-  CBCB
-}
-
-/// Condição experimental base. Reexposições (A', B', C') usam a mesma condição.
+/// Condição experimental base. Uma condição repetida em outro bloco usa a
+/// mesma condição (o rótulo do bloco — A1, A3 — distingue as exposições).
 enum Condition {
   A
   B
@@ -99,27 +92,26 @@ model Stimulus {
   @@map("stimuli")
 }
 
-/// Posição pré-programada de um estímulo dentro de uma variante experimental.
-/// Um registro por (sequenceVariant × blockNumber × trialInBlock).
+/// Posição pré-programada de um estímulo: um registro por
+/// (blockNumber × trialInBlock), 64 no total. O estímulo depende só da
+/// posição, não da condição do bloco — vale para qualquer sequência de blocos.
 /// Populado via seed. Imutável após seed em produção.
 ///
-/// O par (id, sequenceVariant) é declarado como @@unique para ser alvo de
-/// FK composta em Attempt — garante que o TrialTemplate usado pertença à
-/// mesma sequenceVariant da Session.
+/// O trio (id, blockNumber, trialInBlock) é declarado como @@unique para ser
+/// alvo de FK composta em Attempt — garante que o template usado é o da
+/// mesma posição da tentativa.
 model TrialTemplate {
-  id              String          @id @default(cuid())
-  sequenceVariant SequenceVariant @map("sequence_variant")
-  blockNumber     Int             @map("block_number") // 1..4
-  trialInBlock    Int             @map("trial_in_block") // 1..16
-  stimulusId      String          @map("stimulus_id")
+  id           String @id @default(cuid())
+  blockNumber  Int    @map("block_number") // 1..4
+  trialInBlock Int    @map("trial_in_block") // 1..16
+  stimulusId   String @map("stimulus_id")
 
   stimulus Stimulus  @relation(fields: [stimulusId], references: [id])
   attempts Attempt[]
 
-  @@unique([sequenceVariant, blockNumber, trialInBlock])
-  // Chave candidata composta para ser alvo de FK composta em Attempt:
-  // garante simultaneamente sequenceVariant, blockNumber e trialInBlock
-  @@unique([id, sequenceVariant, blockNumber, trialInBlock])
+  @@unique([blockNumber, trialInBlock])
+  // Chave candidata composta para ser alvo de FK composta em Attempt
+  @@unique([id, blockNumber, trialInBlock])
   @@map("trial_templates")
 }
 
@@ -127,16 +119,16 @@ model TrialTemplate {
 
 /// Sessão criada pelo pesquisador. Raiz da execução do experimento.
 /// `name` é o identificador legível (ex. "Turma A — Dupla 3").
-/// `sequenceVariant` define a ordem das condições nos 4 blocos.
-///
-/// O par (id, sequenceVariant) é declarado como @@unique para ser alvo de
-/// FKs compostas em Attempt e SessionParticipant — base da integridade cruzada.
+/// `blockConditions` guarda a condição de cada um dos 4 blocos, em ordem
+/// (índice 0 = bloco 1). Qualquer combinação de A, B e C, com repetição.
+/// O banco garante exatamente 4 itens (CHECK na migration
+/// 20261110_free_block_conditions); a API valida os valores.
 model Session {
-  id              String          @id @default(cuid())
-  researcherId    String          @map("researcher_id")
+  id              String        @id @default(cuid())
+  researcherId    String        @map("researcher_id")
   name            String
-  sequenceVariant SequenceVariant @map("sequence_variant")
-  status          SessionStatus   @default(WAITING)
+  blockConditions Condition[]   @map("block_conditions")
+  status          SessionStatus @default(WAITING)
 
   startedAt   DateTime? @map("started_at")
   completedAt DateTime? @map("completed_at")
@@ -147,8 +139,6 @@ model Session {
   participants SessionParticipant[]
   attempts     Attempt[]
 
-  // Par (id, sequenceVariant) declarado como unique para ser alvo de FK composta
-  @@unique([id, sequenceVariant])
   @@map("sessions")
 }
 
@@ -195,21 +185,18 @@ model SessionParticipant {
 
 /// Uma tentativa dentro de uma sessão.
 ///
-/// Integridade de posição garantida por FKs compostas:
-///   (sessionId, sessionSequenceVariant)
-///       → Session.(id, sequenceVariant)
-///   (trialTemplateId, sessionSequenceVariant, blockNumber, trialInBlock)
-///       → TrialTemplate.(id, sequenceVariant, blockNumber, trialInBlock)
+/// Integridade de posição garantida por FK composta:
+///   (trialTemplateId, blockNumber, trialInBlock)
+///       → TrialTemplate.(id, blockNumber, trialInBlock)
 ///
-/// O campo pivot `sessionSequenceVariant` é compartilhado pelas duas FKs,
-/// garantindo que sequenceVariant da Session = sequenceVariant do TrialTemplate.
 /// Os campos `blockNumber` e `trialInBlock` do próprio Attempt participam da
-/// segunda FK, garantindo que o TrialTemplate referenciado corresponde
-/// exatamente à posição do Attempt — impossível usar o template do bloco 4
-/// numa tentativa do bloco 2, ou um template de ACAB numa sessão ABAC.
+/// FK, garantindo que o TrialTemplate referenciado corresponde exatamente à
+/// posição do Attempt — impossível usar o template do bloco 4 numa tentativa
+/// do bloco 2.
 ///
-/// `condition` é derivada de (sequenceVariant + blockNumber) mas gravada
-/// para auditabilidade — o dado científico não depende de recálculo posterior.
+/// `condition` é derivada de Session.blockConditions[blockNumber - 1] mas
+/// gravada para auditabilidade — o dado científico não depende de recálculo
+/// posterior.
 ///
 /// O snapshot do estímulo é obrigatório: a leitura do CSV não depende de
 /// JOIN com o catálogo, mesmo que o catálogo seja alterado futuramente.
@@ -219,9 +206,6 @@ model SessionParticipant {
 model Attempt {
   id        String @id @default(cuid())
   sessionId String @map("session_id")
-
-  // Campo pivot: carrega a sequenceVariant para as duas FKs compostas abaixo
-  sessionSequenceVariant SequenceVariant @map("session_sequence_variant")
 
   globalNumber Int @map("global_number") // 1..64
   blockNumber  Int @map("block_number") // 1..4
@@ -241,12 +225,11 @@ model Attempt {
   startedAt   DateTime? @map("started_at")
   completedAt DateTime? @map("completed_at")
 
-  // FK composta: garante que sessionSequenceVariant bate com a da Session
-  session Session @relation(fields: [sessionId, sessionSequenceVariant], references: [id, sequenceVariant], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
-  // FK composta: garante que o TrialTemplate pertence à mesma sequenceVariant, blockNumber
-  // e trialInBlock do Attempt — impossível referenciar um template de posição errada
-  trialTemplate TrialTemplate @relation(fields: [trialTemplateId, sessionSequenceVariant, blockNumber, trialInBlock], references: [id, sequenceVariant, blockNumber, trialInBlock])
+  // FK composta: garante que o TrialTemplate é o da mesma posição
+  // (blockNumber, trialInBlock) do Attempt
+  trialTemplate TrialTemplate @relation(fields: [trialTemplateId, blockNumber, trialInBlock], references: [id, blockNumber, trialInBlock])
 
   responses   Response[]
   trialRecord TrialRecord?

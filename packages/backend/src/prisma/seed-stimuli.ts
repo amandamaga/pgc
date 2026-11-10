@@ -39,7 +39,7 @@ async function main() {
 
   console.log(`  ${stimulusIdByKey.size} Stimulus upsertados.`);
 
-  // Etapa 2: upsert dos 256 TrialTemplate
+  // Etapa 2: upsert dos 64 TrialTemplate (um por posição bloco × tentativa)
   const templateDescriptors = buildTrialTemplateDescriptors();
   let count = 0;
 
@@ -47,15 +47,13 @@ async function main() {
     const stimulusId = stimulusIdByKey.get(t.stimulusKey)!;
     await prisma.trialTemplate.upsert({
       where: {
-        sequenceVariant_blockNumber_trialInBlock: {
-          sequenceVariant: t.sequenceVariant,
+        blockNumber_trialInBlock: {
           blockNumber: t.blockNumber,
           trialInBlock: t.trialInBlock,
         },
       },
       update: { stimulusId },
       create: {
-        sequenceVariant: t.sequenceVariant,
         blockNumber: t.blockNumber,
         trialInBlock: t.trialInBlock,
         stimulusId,

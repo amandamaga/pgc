@@ -8,6 +8,7 @@ import { serializeModelExportCsv, MODEL_COLUMNS } from '../../src/services/expor
 import type { ExportRow } from '../../src/domain/export.contract';
 import type { Culturant, SessionState } from '../../src/domain/experiment.types';
 import { resolveTrial, shouldAwardCulturalConsequence } from '../../src/domain/experiment.rules';
+import { blockLabel } from '../../src/domain/experiment.types';
 import { REAL_SESSION } from '../fixtures/real-session.reference';
 
 // ---------------------------------------------------------------------------
@@ -15,12 +16,12 @@ import { REAL_SESSION } from '../fixtures/real-session.reference';
 // ---------------------------------------------------------------------------
 
 function makeRow(overrides: Partial<ExportRow> = {}): ExportRow {
-  return {
+  const row: ExportRow = {
     sessionId: 'sess-001', sessionName: 'Turma A',
-    sequenceVariant: 'ABAC', sessionStatus: 'COMPLETED',
+    blockSequence: 'A1-B2-A3-C4', sessionStatus: 'COMPLETED',
     p1ParticipantCode: 'G1P1', p2ParticipantCode: 'G1P2',
     globalNumber: 1, blockNumber: 1, trialInBlock: 1,
-    condition: 'A',
+    condition: 'A', blockLabel: 'A1',
     endowment: 16,
     distributorCharacter: 'Lucas', receptorCharacter: 'Isaac',
     distributorDistribution: 12, receptorDistribution: 4,   // Desigual
@@ -44,6 +45,11 @@ function makeRow(overrides: Partial<ExportRow> = {}): ExportRow {
     attemptStartedAt: new Date(), attemptCompletedAt: new Date(),
     ...overrides,
   };
+  // Como no export.service: o rótulo do bloco acompanha condição e bloco
+  if (overrides.blockLabel === undefined) {
+    row.blockLabel = blockLabel(row.condition, row.blockNumber);
+  }
+  return row;
 }
 
 function fields(csv: string, lineIndex = 1): string[] {
@@ -76,25 +82,30 @@ describe('serializeModelExportCsv — cabeçalho', () => {
 // Mapeamento de Condition
 // ---------------------------------------------------------------------------
 
-describe('serializeModelExportCsv — Condition', () => {
-  it('A no bloco 1 → A', () => {
-    const f = fields(serializeModelExportCsv([makeRow({ condition: 'A', blockNumber: 1 })]));
-    expect(f[0]).toBe('A');
+describe('serializeModelExportCsv — Condition (rótulo do bloco, F8)', () => {
+  it.each([
+    ['A', 1, 'A1'],
+    ['B', 2, 'B2'],
+    ['A', 3, 'A3'],   // antes da F8 saía 'Aa'
+    ['C', 4, 'C4'],
+    ['B', 3, 'B3'],   // repetição de B (ex.: BCBC) — antes saía só 'B'
+    ['C', 1, 'C1'],
+  ] as const)('%s no bloco %i → %s', (condition, blockNumber, expected) => {
+    const f = fields(serializeModelExportCsv([makeRow({ condition, blockNumber })]));
+    expect(f[0]).toBe(expected);
   });
 
-  it('A no bloco 3 → Aa', () => {
-    const f = fields(serializeModelExportCsv([makeRow({ condition: 'A', blockNumber: 3 })]));
-    expect(f[0]).toBe('Aa');
+  it('usa o blockLabel da linha (não recalcula)', () => {
+    const f = fields(serializeModelExportCsv([makeRow({ condition: 'A', blockNumber: 3, blockLabel: 'A3' })]));
+    expect(f[0]).toBe('A3');
   });
 
-  it('B → B', () => {
-    const f = fields(serializeModelExportCsv([makeRow({ condition: 'B', blockNumber: 2 })]));
-    expect(f[0]).toBe('B');
-  });
-
-  it('C no bloco 4 → C (não vira Aa)', () => {
-    const f = fields(serializeModelExportCsv([makeRow({ condition: 'C', blockNumber: 4 })]));
-    expect(f[0]).toBe('C');
+  it('sequência repetida AABB → A1, A2, B3, B4', () => {
+    const rows = [1, 2, 3, 4].map(b =>
+      makeRow({ condition: b <= 2 ? 'A' : 'B', blockNumber: b, globalNumber: (b - 1) * 16 + 1 }),
+    );
+    const lines = serializeModelExportCsv(rows).split('\n').slice(1);
+    expect(lines.map(l => l.split(',')[0])).toEqual(['A1', 'A2', 'B3', 'B4']);
   });
 });
 
@@ -325,7 +336,7 @@ const G1P1_APTYPE = [
   'D', 'APa', 'APa', 'APa', 'APa', 'APa', 'D', 'APa', 'D', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'D',
   // Bloco 2 — B
   'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd', 'APd',
-  // Bloco 3 — Aa
+  // Bloco 3 — A (segunda exposição; rótulo A3)
   'APa', 'APa', 'D', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa', 'APa',
   // Bloco 4 — C
   'APc', 'APd', 'APc', 'APc', 'APc', 'APc', 'APc', 'APc', 'APd', 'APc', 'APc', 'APc', 'APc', 'APc', 'APc', 'APd',

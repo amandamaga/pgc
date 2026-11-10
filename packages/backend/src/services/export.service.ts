@@ -9,9 +9,9 @@
 import { prisma } from '../config/prisma';
 import { SessionBootstrapError } from './session.drafts';
 import type { ExportRow } from '../domain/export.contract';
+import { blockLabel, formatBlockSequence } from '../domain/experiment.types';
 import type {
   Condition,
-  SequenceVariant,
   JudgmentResponse,
   PunishmentDecision,
   Culturant,
@@ -50,7 +50,7 @@ export async function buildExportRows(
       id:              true,
       researcherId:    true,
       name:            true,
-      sequenceVariant: true,
+      blockConditions: true,
       status:          true,
     },
   });
@@ -161,7 +161,7 @@ export async function buildExportRows(
       // Sessão
       sessionId:         session.id,
       sessionName:       session.name,
-      sequenceVariant:   session.sequenceVariant as SequenceVariant,
+      blockSequence:     formatBlockSequence(session.blockConditions),
       sessionStatus:     session.status as 'WAITING' | 'IN_PROGRESS' | 'COMPLETED',
       p1ParticipantCode: p1.participantCode,
       p2ParticipantCode: p2.participantCode,
@@ -171,6 +171,7 @@ export async function buildExportRows(
       blockNumber:             attempt.blockNumber,
       trialInBlock:            attempt.trialInBlock,
       condition:               attempt.condition as Condition,
+      blockLabel:              blockLabel(attempt.condition as Condition, attempt.blockNumber),
       endowment:               attempt.endowment,
       distributorCharacter:    attempt.distributorCharacter,
       receptorCharacter:       attempt.receptorCharacter,

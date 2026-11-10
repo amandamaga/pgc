@@ -18,7 +18,6 @@
 
 import type {
   Condition,
-  SequenceVariant,
   JudgmentResponse,
   PunishmentDecision,
   Culturant,
@@ -37,7 +36,7 @@ export type SessionStatus = 'WAITING' | 'IN_PROGRESS' | 'COMPLETED';
 export const EXPORT_COLUMNS = [
   'sessionId',
   'sessionName',
-  'sequenceVariant',
+  'blockSequence',
   'sessionStatus',
   'p1ParticipantCode',
   'p2ParticipantCode',
@@ -45,6 +44,7 @@ export const EXPORT_COLUMNS = [
   'blockNumber',
   'trialInBlock',
   'condition',
+  'blockLabel',
   'endowment',
   'distributorCharacter',
   'receptorCharacter',
@@ -90,7 +90,8 @@ export type ExportRow = {
   // Identificação da sessão
   sessionId:          string;
   sessionName:        string;
-  sequenceVariant:    SequenceVariant;
+  /** Ordem dos blocos da sessão com rótulos, ex.: 'A1-B2-A3-C4' */
+  blockSequence:      string;
   sessionStatus:      SessionStatus;
   p1ParticipantCode:  string;
   p2ParticipantCode:  string;
@@ -100,6 +101,8 @@ export type ExportRow = {
   blockNumber:   number;
   trialInBlock:  number;
   condition:     Condition;
+  /** Rótulo do bloco: condição + número do bloco, ex.: 'A3' */
+  blockLabel:    string;
 
   // Estímulo (obrigatórios)
   endowment:               number;

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   RAW_STIMULI,
   RECEPTOR_PAIR,
-  VARIANTS,
   buildStimulusDescriptors,
   buildTrialTemplateDescriptors,
 } from '../../src/prisma/seed-data';
@@ -53,16 +52,6 @@ describe('RECEPTOR_PAIR — integridade', () => {
       pairs.add([a, b].sort().join('|'));
     }
     expect(pairs.size).toBe(8);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// VARIANTS — derivados do domínio
-// ---------------------------------------------------------------------------
-
-describe('VARIANTS — derivados de SEQUENCE_MAP', () => {
-  it('contém exatamente as 4 variantes do protocolo', () => {
-    expect(VARIANTS.sort()).toEqual(['ABAC', 'ACAB', 'BCBC', 'CBCB']);
   });
 });
 
@@ -190,30 +179,23 @@ describe('posições por bloco', () => {
 // TrialTemplate — builders
 // ---------------------------------------------------------------------------
 
-describe('buildTrialTemplateDescriptors() — 256 templates', () => {
-  it('gera exatamente 256 templates', () => {
-    expect(templates.length).toBe(256);
+describe('buildTrialTemplateDescriptors() — 64 templates (um por posição)', () => {
+  it('gera exatamente 64 templates', () => {
+    expect(templates.length).toBe(64);
   });
 
-  it('gera exatamente 64 templates por variante', () => {
-    for (const v of VARIANTS) {
-      const count = templates.filter(t => t.sequenceVariant === v).length;
-      expect(count, `variante ${v}`).toBe(64);
+  it('não carrega variante de sequência (o estímulo depende só da posição)', () => {
+    for (const t of templates) {
+      expect(Object.keys(t).sort()).toEqual(['blockNumber', 'stimulusKey', 'trialInBlock']);
     }
   });
 
-  it('todos os (variant, blockNumber, trialInBlock) são únicos', () => {
-    const keys = templates.map(t => `${t.sequenceVariant}|${t.blockNumber}|${t.trialInBlock}`);
-    expect(new Set(keys).size).toBe(256);
-  });
-
-  it('a mesma (block, trial) referencia o mesmo estímulo nas quatro variantes', () => {
+  it('cobre todas as posições (blockNumber 1..4 × trialInBlock 1..16), sem repetir', () => {
+    const keys = templates.map(t => `${t.blockNumber}|${t.trialInBlock}`);
+    expect(new Set(keys).size).toBe(64);
     for (let b = 1; b <= 4; b++) {
       for (let t = 1; t <= 16; t++) {
-        const byPosition = templates.filter(tmpl => tmpl.blockNumber === b && tmpl.trialInBlock === t);
-        expect(byPosition.length, `posição ${b}|${t} — deve ter 4 templates`).toBe(4);
-        const keys = new Set(byPosition.map(tmpl => tmpl.stimulusKey));
-        expect(keys.size, `posição ${b}|${t} — stimulusKey deve ser igual nas 4 variantes`).toBe(1);
+        expect(keys, `posição ${b}|${t}`).toContain(`${b}|${t}`);
       }
     }
   });
