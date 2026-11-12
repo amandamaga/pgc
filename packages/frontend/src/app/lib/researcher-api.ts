@@ -51,11 +51,34 @@ export async function researcherRequest<T>(path: string, options: RequestInit = 
   return body as T;
 }
 
+// Condição de um bloco do experimento.
+export type Condition = "A" | "B" | "C";
+
+// Condição de cada um dos 4 blocos, em ordem (índice 0 = bloco 1).
+// Qualquer combinação, com repetição (F8).
+export type BlockConditions = [Condition, Condition, Condition, Condition];
+
+// Atalhos das sequências da tese — só preenchem os 4 blocos.
+export const SEQUENCE_PRESETS: Record<"ABAC" | "ACAB" | "BCBC" | "CBCB", BlockConditions> = {
+  ABAC: ["A", "B", "A", "C"],
+  ACAB: ["A", "C", "A", "B"],
+  BCBC: ["B", "C", "B", "C"],
+  CBCB: ["C", "B", "C", "B"],
+};
+
+// Forma curta exibida na tela: ["A","B","A","C"] → "ABAC".
+// (Os CSVs usam o rótulo por bloco A1-B2-A3-C4, montado no backend.)
+export function formatSequence(conditions: readonly Condition[] | undefined): string {
+  return conditions?.join("") ?? "";
+}
+
 // Contrato de listSessions em packages/backend/src/services/session.service.ts.
 export interface ResearcherSession {
   id: string;
   name: string;
-  sequenceVariant: "ABAC" | "ACAB" | "BCBC" | "CBCB";
+  blockConditions: BlockConditions;
+  /** Rótulo com o número de cada bloco, ex.: "A1-B2-A3-C4" (mesmo do CSV). */
+  blockSequence: string;
   status: "WAITING" | "IN_PROGRESS" | "COMPLETED";
   startedAt: string | null;
   completedAt: string | null;
@@ -72,14 +95,14 @@ export async function listSessions(signal?: AbortSignal): Promise<ResearcherSess
 
 export interface CreateSessionInput {
   name: string;
-  sequenceVariant: ResearcherSession["sequenceVariant"];
+  blockConditions: BlockConditions;
 }
 
 // POST retorna a Session criada, sem o _count incluído na listagem.
 export function createSession(input: CreateSessionInput) {
   return researcherRequest<Omit<ResearcherSession, "_count">>("/sessions", {
     method: "POST",
-    body: JSON.stringify({ name: input.name.trim(), sequenceVariant: input.sequenceVariant }),
+    body: JSON.stringify({ name: input.name.trim(), blockConditions: input.blockConditions }),
   });
 }
 
@@ -95,7 +118,7 @@ export interface SessionDetails extends ResearcherSession {
 }
 
 export interface SessionPanel {
-  session: Pick<ResearcherSession, "id" | "name" | "sequenceVariant" | "status" | "startedAt" | "completedAt">;
+  session: Pick<ResearcherSession, "id" | "name" | "blockConditions" | "blockSequence" | "status" | "startedAt" | "completedAt">;
   participants: (SessionParticipant & { joinedAt: string | null; lastSeenAt: string | null; stage: Stage })[];
   progress: { totalAttempts: number; finalizedAttempts: number; acknowledgedAttempts: number; activeAttemptNumber: number | null };
 }

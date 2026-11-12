@@ -5,7 +5,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { getSession, ResearcherApiError, type SessionDetails } from "../lib/researcher-api";
+import { formatSequence, getSession, ResearcherApiError, type SessionDetails } from "../lib/researcher-api";
 
 const statuses = {
   WAITING: { label: "Aguardando início", variant: "outline" },
@@ -77,7 +77,11 @@ export function SessionDetailPage() {
           )}
           <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-2 text-sm">
             {status && <Badge variant={status.variant}>{status.label}</Badge>}
-            {details && <span>Sequência {details.sequenceVariant}</span>}
+            {details && (
+              <span>
+                Sequência <span className="font-mono">{formatSequence(details.blockConditions)}</span>
+              </span>
+            )}
           </div>
         </div>
 

@@ -1,4 +1,5 @@
 import { createBrowserRouter, RouterProvider, redirect } from "react-router";
+import { Toaster } from "./components/ui/sonner";
 import { ResearcherSessionPanelPage } from "./pages/researcher-session-panel";
 import { SessionParticipantsPage } from "./pages/session-participants";
 import { SessionDetailPage } from "./pages/session-detail";
@@ -41,5 +42,11 @@ const router = createBrowserRouter([
 ]);
 
 export default function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <>
+      <RouterProvider router={router} />
+      {/* Avisos passageiros de confirmação (ex.: sessão apagada). */}
+      <Toaster position="bottom-right" richColors closeButton />
+    </>
+  );
 }
