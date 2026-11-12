@@ -22,8 +22,9 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { CreateSessionDialog } from "./create-session-dialog";
-import { deleteSession, listSessions, ResearcherApiError, type ResearcherSession } from "../lib/researcher-api";
+import { deleteSession, formatSequence, listSessions, ResearcherApiError, type ResearcherSession } from "../lib/researcher-api";
 
 const statuses = {
   WAITING: { label: "Aguardando início", variant: "outline" },
@@ -49,7 +50,6 @@ export function ResearcherSessions() {
   const [toDelete, setToDelete] = useState<ResearcherSession | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  const [notice, setNotice] = useState("");
 
   async function confirmDelete() {
     if (!toDelete) return;
@@ -57,7 +57,9 @@ export function ResearcherSessions() {
     setDeleteError("");
     try {
       await deleteSession(toDelete.id);
-      setNotice(`Sessão "${toDelete.name}" apagada.`);
+      // Confirmação passageira (toast): a linha some da tabela e o aviso não
+      // desloca a lista. Erros continuam dentro da janela de confirmação.
+      toast.success(`Sessão "${toDelete.name}" apagada`, { duration: 4000 });
       setToDelete(null);
       refresh();
     } catch (err) {
@@ -118,10 +120,6 @@ export function ResearcherSessions() {
           <CreateSessionDialog onCreated={refresh} />
         </div>
       </div>
-
-      {notice && (
-        <p role="status" className="text-muted-foreground mb-3 text-sm">{notice}</p>
-      )}
 
       <Card>
         <CardContent className="py-6">
@@ -193,7 +191,7 @@ export function ResearcherSessions() {
                             </Badge>
                           </TableCell>
                           <TableCell>{dateFormat.format(new Date(session.createdAt))}</TableCell>
-                          <TableCell>{session.sequenceVariant}</TableCell>
+                          <TableCell className="font-mono">{formatSequence(session.blockConditions)}</TableCell>
                           <TableCell className="text-right">
                             {session.status === "WAITING" && (
                               <Button
@@ -205,7 +203,6 @@ export function ResearcherSessions() {
                                   // Não abre a sessão ao clicar no botão da linha.
                                   event.stopPropagation();
                                   setDeleteError("");
-                                  setNotice("");
                                   setToDelete(session);
                                 }}
                               >

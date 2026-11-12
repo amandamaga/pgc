@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { PasswordInput } from "../components/password-input";
 
 // Mesmo mínimo do backend (auth.service.ts). O backend confere de novo e é a regra que vale.
 const PASSWORD_MIN_LENGTH = 8;
@@ -178,9 +179,8 @@ export function RegisterPage() {
 
                 <div className="grid gap-2">
                   <Label htmlFor="password">Senha</Label>
-                  <Input
+                  <PasswordInput
                     id="password"
-                    type="password"
                     autoComplete="new-password"
                     required
                     minLength={PASSWORD_MIN_LENGTH}
@@ -196,9 +196,8 @@ export function RegisterPage() {
 
                 <div className="grid gap-2">
                   <Label htmlFor="confirm">Repetir senha</Label>
-                  <Input
+                  <PasswordInput
                     id="confirm"
-                    type="password"
                     autoComplete="new-password"
                     required
                     disabled={loading}
