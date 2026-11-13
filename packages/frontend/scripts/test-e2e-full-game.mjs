@@ -10,7 +10,16 @@
  *   node scripts/test-e2e-full-game.mjs
  * sem depender de build de dependencias nativas.
  *
- * Pre-requisito: backend rodando em http://localhost:3001.
+ * Pre-requisito: backend rodando em http://localhost:3001 (ou PGC_API_BASE).
+ *
+ * Variaveis (opcionais):
+ *   PGC_API_BASE  URL da API (padrao http://localhost:3001)
+ *   PGC_EMAIL / PGC_PASSWORD  conta da pesquisadora
+ *   PGC_BLOCKS    condicao de cada um dos 4 blocos, ex.: AABB (padrao ABAC)
+ *
+ * F8: a sessao e criada com blockConditions e o teste confere, nos dois CSVs,
+ * o rotulo de cada bloco (A1, A2, B3, B4...), o APtype pela condicao base e o
+ * acumulado de moedas do grupo.
  */
 
 import assert from 'node:assert/strict';
@@ -21,6 +30,13 @@ import { fileURLToPath } from 'node:url';
 const API_BASE = process.env.PGC_API_BASE ?? 'http://localhost:3001';
 const RESEARCHER_EMAIL = process.env.PGC_EMAIL ?? 'amanda@pgc.com';
 const RESEARCHER_PASSWORD = process.env.PGC_PASSWORD ?? 'TestePGC123!';
+const BLOCKS = (process.env.PGC_BLOCKS ?? 'ABAC').trim().toUpperCase();
+if (!/^[ABC]{4}$/.test(BLOCKS)) {
+  console.error(`PGC_BLOCKS invalido: "${BLOCKS}". Use 4 letras A, B ou C (ex.: AABB).`);
+  process.exit(1);
+}
+const BLOCK_CONDITIONS = BLOCKS.split('');
+const BLOCK_SEQUENCE = BLOCK_CONDITIONS.map((c, i) => `${c}${i + 1}`).join('-');
 
 const POLL_MS = 250;
 // O protocolo tem 64 tentativas; o teto so existe para o teste nao girar
@@ -89,10 +105,12 @@ async function setupSession() {
   const session = await api('/sessions', {
     token,
     method: 'POST',
-    body: { name: `E2E ${stamp}`, sequenceVariant: 'CBCB' },
+    body: { name: `E2E ${BLOCKS} ${stamp}`, blockConditions: BLOCK_CONDITIONS },
   });
   assert.ok(session?.id, 'criacao de sessao deveria devolver id');
-  console.log(`  sessao criada: ${session.id} (${session.name})`);
+  assert.deepEqual(session.blockConditions, BLOCK_CONDITIONS, 'sessao deveria guardar os 4 blocos enviados');
+  assert.equal(session.blockSequence, BLOCK_SEQUENCE, `blockSequence deveria ser ${BLOCK_SEQUENCE}`);
+  console.log(`  sessao criada: ${session.id} (${session.name}) — blocos ${session.blockSequence}`);
 
   const participants = {};
   for (const [slot, info] of Object.entries(TEST_PARTICIPANTS)) {
@@ -185,7 +203,74 @@ function dataRows(csv) {
   return { header: lines[0], rows: lines.slice(1) };
 }
 
-const RAW_HEADER_START = 'sessionId,sessionName,sequenceVariant,sessionStatus';
+const RAW_HEADER_START = 'sessionId,sessionName,blockSequence,sessionStatus';
+
+// Divide uma linha de CSV respeitando campos entre aspas.
+function splitCsvLine(line) {
+  const out = [];
+  let cur = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else cur += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ',') { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+// APtype aceito por condicao base (regra de export.model.csv.ts):
+// A -> APa (com consequencia) ou D; B -> APb ou APd; C -> APc ou APd.
+const APTYPE_BY_CONDITION = { A: ['APa', 'D'], B: ['APb', 'APd'], C: ['APc', 'APd'] };
+
+function checkBlocks(raw, model) {
+  // CSV completo: blockSequence igual em todas as linhas; blockLabel = condicao + bloco.
+  const rawHeader = splitCsvLine(raw.header);
+  const col = (name) => {
+    const i = rawHeader.indexOf(name);
+    assert.ok(i >= 0, `CSV completo sem a coluna ${name}`);
+    return i;
+  };
+  const iSeq = col('blockSequence');
+  const iBlock = col('blockNumber');
+  const iCond = col('condition');
+  const iLabel = col('blockLabel');
+  for (const [index, line] of raw.rows.entries()) {
+    const f = splitCsvLine(line);
+    const block = Number(f[iBlock]);
+    const expectedCond = BLOCK_CONDITIONS[block - 1];
+    assert.equal(f[iSeq], BLOCK_SEQUENCE, `linha ${index + 1}: blockSequence`);
+    assert.equal(f[iCond], expectedCond, `linha ${index + 1}: condition do bloco ${block}`);
+    assert.equal(f[iLabel], `${expectedCond}${block}`, `linha ${index + 1}: blockLabel`);
+  }
+
+  // CSV modelo: Condition = rotulo do bloco, 16 linhas por bloco, na ordem;
+  // APtype coerente com a condicao base; G.Coins Cum. = soma de G.Coins.
+  const modelHeader = splitCsvLine(model.header);
+  const iMCond = modelHeader.indexOf('Condition');
+  const iAP = modelHeader.indexOf('APtype');
+  const iG = modelHeader.indexOf('G.Coins');
+  const iGCum = modelHeader.indexOf('G.Coins Cum.');
+  assert.ok(iMCond === 0 && iAP > 0 && iG > 0 && iGCum > 0, 'CSV modelo sem Condition/APtype/G.Coins');
+  let gCum = 0;
+  const perLabel = {};
+  for (const [index, line] of model.rows.entries()) {
+    const f = splitCsvLine(line);
+    const block = Math.floor(index / 16) + 1;
+    const cond = BLOCK_CONDITIONS[block - 1];
+    assert.equal(f[iMCond], `${cond}${block}`, `modelo linha ${index + 1}: Condition`);
+    assert.ok(APTYPE_BY_CONDITION[cond].includes(f[iAP]), `modelo linha ${index + 1}: APtype ${f[iAP]} nao combina com ${cond}`);
+    gCum += Number(f[iG]);
+    assert.equal(Number(f[iGCum]), gCum, `modelo linha ${index + 1}: G.Coins Cum.`);
+    perLabel[f[iMCond]] = (perLabel[f[iMCond]] ?? 0) + 1;
+  }
+  console.log(`  blocos conferidos: ${Object.entries(perLabel).map(([k, v]) => `${k}=${v}`).join(' ')}; moedas do grupo ${gCum}`);
+}
 const MODEL_HEADER_START = 'Condition,Trial,Distributor,Initial';
 
 async function exportAndCheck(token, session, expectedAttempts) {
@@ -213,6 +298,8 @@ async function exportAndCheck(token, session, expectedAttempts) {
     assert.ok(row.startsWith(session.id + ','), `linha ${index + 1} nao e desta sessao`);
   }
 
+  checkBlocks(raw, model);
+
   const rawPath = join(OUT_DIR, `session-${session.id}.csv`);
   const modelPath = join(OUT_DIR, `session-${session.id}-model.csv`);
   writeFileSync(rawPath, rawCsv, 'utf8');
@@ -228,7 +315,7 @@ async function exportAndCheck(token, session, expectedAttempts) {
 
 async function main() {
   const started = Date.now();
-  console.log(`\nE2E contra ${API_BASE}\n`);
+  console.log(`\nE2E contra ${API_BASE} — blocos ${BLOCKS} (${BLOCK_SEQUENCE})\n`);
 
   console.log('1/3 preparando a sessao');
   const { token, session, participants } = await setupSession();
